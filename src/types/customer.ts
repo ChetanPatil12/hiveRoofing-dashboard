@@ -42,7 +42,7 @@ export interface Customer {
 export const STEP_PLATFORMS: Record<number, string> = {
   1: 'Google Review',
   2: 'Facebook Review',
-  3: 'Google Video Testimonial',
+  3: 'Video Testimonial',
   4: 'BBB Review',
   5: 'Google Review (w/ Photos)',
   6: 'Yelp Review',
