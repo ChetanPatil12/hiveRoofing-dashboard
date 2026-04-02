@@ -6,6 +6,7 @@ import SummaryCards from './SummaryCards';
 import CustomerTable from './CustomerTable';
 import DetailPanel from './DetailPanel';
 import AnalyticsSection from './analytics/AnalyticsSection';
+import StartSequenceModal from './StartSequenceModal';
 
 type StatusFilter = CustomerStatus | 'all';
 
@@ -27,6 +28,7 @@ export default function Dashboard() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [showStartModal, setShowStartModal] = useState(false);
 
   const fetchData = useCallback(async (isManual = false) => {
     if (isManual) setRefreshing(true);
@@ -98,6 +100,15 @@ export default function Dashboard() {
                 Updated {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </span>
             )}
+            <button
+              onClick={() => setShowStartModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-[#e85d04] text-[#e85d04] rounded-lg hover:bg-orange-50 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Start Sequence
+            </button>
             <button
               onClick={() => fetchData(true)}
               disabled={refreshing}
@@ -211,6 +222,11 @@ export default function Dashboard() {
           customer={selectedCustomer}
           onClose={() => setSelectedId(null)}
         />
+      )}
+
+      {/* ── Start sequence modal ── */}
+      {showStartModal && (
+        <StartSequenceModal onClose={() => setShowStartModal(false)} />
       )}
     </div>
   );
