@@ -1,5 +1,5 @@
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   const { jobId } = await params;
@@ -12,23 +12,36 @@ export async function GET(
     );
   }
 
-  // Step 1: get contacts list for job
+  const authHeaders = {
+    Authorization: `Bearer ${apiKey}`,
+    Accept: 'application/json',
+  };
+
+  const { searchParams } = new URL(request.url);
+  const contactId = searchParams.get('contactId');
+  const phoneNumberId = searchParams.get('phoneNumberId');
+
+  // Fast path: contactId + phoneNumberId already known from search results
+  if (contactId && phoneNumberId) {
+    const phoneRes = await fetch(
+      `https://api.acculynx.com/api/v2/contacts/${contactId}/phone-numbers/${phoneNumberId}`,
+      { headers: authHeaders }
+    );
+    if (!phoneRes.ok) {
+      return Response.json({ name: '', phone: '' });
+    }
+    const phoneData = await phoneRes.json();
+    return Response.json({ phone: phoneData.number ?? '' });
+  }
+
+  // Slow path fallback: look up via job contacts list
   const contactsRes = await fetch(
     `https://api.acculynx.com/api/v2/jobs/${jobId}/contacts`,
-    {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: 'application/json',
-      },
-    }
+    { headers: authHeaders }
   );
 
   if (!contactsRes.ok) {
-    const text = await contactsRes.text();
-    return Response.json(
-      { error: `AccuLynx contacts returned ${contactsRes.status}: ${text}` },
-      { status: contactsRes.status }
-    );
+    return Response.json({ name: '', phone: '' });
   }
 
   const contactsData = await contactsRes.json();
@@ -39,36 +52,39 @@ export async function GET(
     return Response.json({ name: '', phone: '' });
   }
 
-  // Prefer primary contact
   const primary = contacts.find((c) => c.isPrimary) ?? contacts[0];
-  const contactId = primary.contactId;
+  const cId = primary.contactId;
 
-  // Step 2: get contact details with phone
   const detailRes = await fetch(
-    `https://api.acculynx.com/api/v2/contacts/${contactId}?includes=phoneNumber`,
-    {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: 'application/json',
-      },
-    }
+    `https://api.acculynx.com/api/v2/contacts/${cId}`,
+    { headers: authHeaders }
   );
 
   if (!detailRes.ok) {
-    const text = await detailRes.text();
-    return Response.json(
-      { error: `AccuLynx contact detail returned ${detailRes.status}: ${text}` },
-      { status: detailRes.status }
-    );
+    return Response.json({ name: '', phone: '' });
   }
 
   const detail = await detailRes.json();
   const firstName = detail.firstName ?? '';
   const lastName = detail.lastName ?? '';
-  const phone = (detail.phoneNumber?.[0]?.number ?? '').replace(/\D/g, '');
+  const pnId = detail.phoneNumbers?.[0]?.id;
 
+  if (!pnId) {
+    return Response.json({ name: `${firstName} ${lastName}`.trim(), phone: '' });
+  }
+
+  const phoneRes = await fetch(
+    `https://api.acculynx.com/api/v2/contacts/${cId}/phone-numbers/${pnId}`,
+    { headers: authHeaders }
+  );
+
+  if (!phoneRes.ok) {
+    return Response.json({ name: `${firstName} ${lastName}`.trim(), phone: '' });
+  }
+
+  const phoneData = await phoneRes.json();
   return Response.json({
     name: `${firstName} ${lastName}`.trim(),
-    phone,
+    phone: phoneData.number ?? '',
   });
 }

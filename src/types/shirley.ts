@@ -163,6 +163,8 @@ export interface AccuLynxJobResult {
   };
   homeownerName?: string;
   tradeTypes?: Array<{ id: string; name: string }>;
+  contactId?: string;
+  phoneNumberId?: string;
 }
 
 export interface AccuLynxContactResult {

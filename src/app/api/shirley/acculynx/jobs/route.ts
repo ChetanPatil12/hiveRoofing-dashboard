@@ -12,23 +12,22 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const q = searchParams.get('q') ?? '';
 
-  const url = new URL('https://api.acculynx.com/api/v2/jobs');
-  const today = new Date().toISOString().slice(0, 10); // yyyy-MM-dd
-  url.searchParams.set('dateFilterType', 'ModifiedDate');
-  url.searchParams.set('startDate', '2024-01-01');
-  url.searchParams.set('endDate', today);
-  url.searchParams.set('milestones', 'approved,completed');
-  url.searchParams.set('pageSize', '25');
-  url.searchParams.set('includes', 'contacts,tradeTypes');
-  if (q) url.searchParams.set('search', q);
+  if (!q.trim()) {
+    return Response.json({ jobs: [] });
+  }
 
-  const res = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-  });
+  const res = await fetch(
+    'https://api.acculynx.com/api/v2/jobs/search?pageSize=20&includes=contacts,tradeTypes',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ searchTerm: q.trim() }),
+    }
+  );
 
   if (!res.ok) {
     const text = await res.text();
@@ -51,7 +50,12 @@ export async function GET(request: Request) {
     };
     contacts?: Array<{
       isPrimary?: boolean;
-      contact?: { firstName?: string; lastName?: string };
+      contact?: {
+        id?: string;
+        firstName?: string;
+        lastName?: string;
+        phoneNumbers?: Array<{ id: string }>;
+      };
     }>;
     tradeTypes?: Array<{ id: string; name: string }>;
   }
@@ -72,12 +76,16 @@ export async function GET(request: Request) {
     const firstName = primaryContact?.contact?.firstName ?? '';
     const lastName = primaryContact?.contact?.lastName ?? '';
     const homeownerName = `${firstName} ${lastName}`.trim();
+    const contactId = primaryContact?.contact?.id;
+    const phoneNumberId = primaryContact?.contact?.phoneNumbers?.[0]?.id;
 
     return {
       id: j.id,
       address: { fullAddress },
       homeownerName: homeownerName || undefined,
       tradeTypes: j.tradeTypes ?? [],
+      contactId: contactId || undefined,
+      phoneNumberId: phoneNumberId || undefined,
     };
   });
 

@@ -116,7 +116,10 @@ export default function ActivationForm() {
     // Fetch phone in background
     setPhoneLoading(true);
     try {
-      const res = await fetch(`/api/shirley/acculynx/jobs/${job.id}/contact`);
+      const qs = new URLSearchParams();
+      if (job.contactId) qs.set('contactId', job.contactId);
+      if (job.phoneNumberId) qs.set('phoneNumberId', job.phoneNumberId);
+      const res = await fetch(`/api/shirley/acculynx/jobs/${job.id}/contact?${qs.toString()}`);
       const data = await res.json();
       if (data.name && !job.homeownerName) setHomeownerName(data.name);
       if (data.phone) setHomeownerPhone(data.phone);
@@ -237,13 +240,13 @@ export default function ActivationForm() {
                       onClick={() => handleSelectJob(r)}
                       className="w-full text-left px-4 py-2.5 text-sm hover:bg-orange-50 border-b border-gray-100 last:border-0"
                     >
-                      <div className="font-medium text-gray-800">{r.address.fullAddress}</div>
                       {r.homeownerName && (
-                        <div className="text-xs text-gray-400">{r.homeownerName}</div>
+                        <div className="font-medium text-gray-800">{r.homeownerName}</div>
                       )}
                       {r.tradeTypes && r.tradeTypes.length > 0 && (
-                        <div className="text-xs text-gray-400">{r.tradeTypes.map((t) => t.name).join(' · ')}</div>
+                        <div className="text-xs text-[#e85d04] font-medium">{r.tradeTypes.map((t) => t.name).join(' · ')}</div>
                       )}
+                      <div className="text-xs text-gray-400">{r.address.fullAddress}</div>
                     </button>
                   ))}
                 </div>
