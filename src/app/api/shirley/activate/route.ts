@@ -1,12 +1,11 @@
 import type { ActivationPayload } from '@/types/shirley';
 
 export async function POST(request: Request) {
-  const webhookUrl = process.env.N8N_ACTIVATE_JOB_WEBHOOK;
-  const secret = process.env.N8N_WEBHOOK_SECRET;
+  const triggerSecret = process.env.SHIRLEY_TRIGGER_SECRET_KEY;
 
-  if (!webhookUrl) {
+  if (!triggerSecret) {
     return Response.json(
-      { error: 'N8N_ACTIVATE_JOB_WEBHOOK is not set' },
+      { error: 'SHIRLEY_TRIGGER_SECRET_KEY is not set' },
       { status: 500 }
     );
   }
@@ -38,14 +37,17 @@ export async function POST(request: Request) {
     }
   }
 
-  const res = await fetch(webhookUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
+  const res = await fetch(
+    'https://api.trigger.dev/api/v1/tasks/shirley-activate-job/trigger',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${triggerSecret}`,
+      },
+      body: JSON.stringify({ payload: body }),
+    }
+  );
 
   if (!res.ok) {
     const text = await res.text();

@@ -1,12 +1,11 @@
 import type { SendMessagePayload } from '@/types/shirley';
 
 export async function POST(request: Request) {
-  const webhookUrl = process.env.N8N_EMPLOYEE_MSG_WEBHOOK;
-  const secret = process.env.N8N_WEBHOOK_SECRET;
+  const triggerSecret = process.env.SHIRLEY_TRIGGER_SECRET_KEY;
 
-  if (!webhookUrl) {
+  if (!triggerSecret) {
     return Response.json(
-      { error: 'N8N_EMPLOYEE_MSG_WEBHOOK is not set' },
+      { error: 'SHIRLEY_TRIGGER_SECRET_KEY is not set' },
       { status: 500 }
     );
   }
@@ -25,18 +24,22 @@ export async function POST(request: Request) {
     );
   }
 
-  const res = await fetch(webhookUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
+  const res = await fetch(
+    'https://api.trigger.dev/api/v1/tasks/shirley-employee-message/trigger',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${triggerSecret}`,
+      },
+      body: JSON.stringify({ payload: body }),
+    }
+  );
 
   if (!res.ok) {
+    const text = await res.text();
     return Response.json(
-      { error: `Couldn't send message — please try again` },
+      { error: `Couldn't send message — please try again: ${text}` },
       { status: res.status }
     );
   }
