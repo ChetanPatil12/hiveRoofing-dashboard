@@ -13,9 +13,10 @@ export async function GET(request: Request) {
   const q = searchParams.get('q') ?? '';
 
   const url = new URL('https://api.acculynx.com/api/v2/jobs');
+  const today = new Date().toISOString().slice(0, 10); // yyyy-MM-dd
   url.searchParams.set('dateFilterType', 'ModifiedDate');
-  url.searchParams.set('startDate', '2024-01-01T00:00:00Z');
-  url.searchParams.set('endDate', new Date().toISOString());
+  url.searchParams.set('startDate', '2024-01-01');
+  url.searchParams.set('endDate', today);
   url.searchParams.set('milestones', 'approved,completed');
   url.searchParams.set('pageSize', '25');
   url.searchParams.set('includes', 'contacts,tradeTypes');
