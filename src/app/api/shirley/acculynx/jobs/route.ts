@@ -1,0 +1,47 @@
+import type { AccuLynxJobResult } from '@/types/shirley';
+
+export async function GET(request: Request) {
+  const apiKey = process.env.ACCULYNX_API_KEY;
+  if (!apiKey) {
+    return Response.json(
+      { error: 'ACCULYNX_API_KEY environment variable is not set' },
+      { status: 500 }
+    );
+  }
+
+  const { searchParams } = new URL(request.url);
+  const q = searchParams.get('q') ?? '';
+
+  const url = new URL('https://api.acculynx.com/api/v2/jobs');
+  url.searchParams.set('dateFilterType', 'ModifiedDate');
+  url.searchParams.set('startDate', '2024-01-01');
+  url.searchParams.set('milestones', 'approved,completed');
+  url.searchParams.set('pageSize', '25');
+  if (q) url.searchParams.set('search', q);
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    return Response.json(
+      { error: `AccuLynx API returned ${res.status}: ${text}` },
+      { status: res.status }
+    );
+  }
+
+  const data = await res.json();
+  const jobs: AccuLynxJobResult[] = (data.data ?? []).map(
+    (j: { id: string; address?: { fullAddress?: string } }) => ({
+      id: j.id,
+      address: { fullAddress: j.address?.fullAddress ?? '' },
+    })
+  );
+
+  return Response.json({ jobs });
+}
