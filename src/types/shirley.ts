@@ -161,6 +161,8 @@ export interface AccuLynxJobResult {
   address: {
     fullAddress: string;
   };
+  homeownerName?: string;
+  tradeTypes?: Array<{ id: string; name: string }>;
 }
 
 export interface AccuLynxContactResult {

@@ -17,6 +17,7 @@ export async function GET(request: Request) {
   url.searchParams.set('startDate', '2024-01-01');
   url.searchParams.set('milestones', 'approved,completed');
   url.searchParams.set('pageSize', '25');
+  url.searchParams.set('includes', 'contacts,tradeTypes');
   if (q) url.searchParams.set('search', q);
 
   const res = await fetch(url.toString(), {
@@ -36,12 +37,47 @@ export async function GET(request: Request) {
   }
 
   const data = await res.json();
-  const jobs: AccuLynxJobResult[] = (data.data ?? []).map(
-    (j: { id: string; address?: { fullAddress?: string } }) => ({
+
+  interface RawJob {
+    id: string;
+    locationAddress?: {
+      street1?: string;
+      street2?: string;
+      city?: string;
+      state?: { abbreviation?: string };
+      zipCode?: string;
+    };
+    contacts?: Array<{
+      isPrimary?: boolean;
+      contact?: { firstName?: string; lastName?: string };
+    }>;
+    tradeTypes?: Array<{ id: string; name: string }>;
+  }
+
+  const jobs: AccuLynxJobResult[] = (data.items ?? data.data ?? []).map((j: RawJob) => {
+    const loc = j.locationAddress;
+    const parts = [
+      loc?.street1,
+      loc?.street2,
+      loc?.city,
+      loc?.state?.abbreviation,
+      loc?.zipCode,
+    ].filter(Boolean);
+    const fullAddress = parts.join(', ');
+
+    const primaryContact =
+      j.contacts?.find((c) => c.isPrimary) ?? j.contacts?.[0];
+    const firstName = primaryContact?.contact?.firstName ?? '';
+    const lastName = primaryContact?.contact?.lastName ?? '';
+    const homeownerName = `${firstName} ${lastName}`.trim();
+
+    return {
       id: j.id,
-      address: { fullAddress: j.address?.fullAddress ?? '' },
-    })
-  );
+      address: { fullAddress },
+      homeownerName: homeownerName || undefined,
+      tradeTypes: j.tradeTypes ?? [],
+    };
+  });
 
   return Response.json({ jobs });
 }
