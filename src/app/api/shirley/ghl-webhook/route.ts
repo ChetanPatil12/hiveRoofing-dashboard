@@ -5,10 +5,10 @@
 // https://your-vercel-url.vercel.app/api/shirley/ghl-webhook
 
 export async function POST(request: Request) {
-  const secretKey = process.env.TRIGGER_DEV_SECRET_KEY;
+  const secretKey = process.env.SHIRLEY_TRIGGER_SECRET_KEY;
   if (!secretKey) {
     return Response.json(
-      { error: 'TRIGGER_DEV_SECRET_KEY is not set' },
+      { error: 'SHIRLEY_TRIGGER_SECRET_KEY is not set' },
       { status: 500 }
     );
   }
