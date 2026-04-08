@@ -1,10 +1,12 @@
 import type { ActivationPayload } from '@/types/shirley';
 
 export async function POST(request: Request) {
-  const secretKey = process.env.SHIRLEY_TRIGGER_SECRET_KEY;
-  if (!secretKey) {
+  const webhookUrl = process.env.N8N_ACTIVATE_JOB_WEBHOOK;
+  const secret = process.env.N8N_WEBHOOK_SECRET;
+
+  if (!webhookUrl) {
     return Response.json(
-      { error: 'SHIRLEY_TRIGGER_SECRET_KEY is not set' },
+      { error: 'N8N_ACTIVATE_JOB_WEBHOOK is not set' },
       { status: 500 }
     );
   }
@@ -36,17 +38,14 @@ export async function POST(request: Request) {
     }
   }
 
-  const res = await fetch(
-    'https://api.trigger.dev/api/v1/tasks/shirley-activate-job/trigger',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${secretKey}`,
-      },
-      body: JSON.stringify({ payload: body }),
-    }
-  );
+  const res = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
 
   if (!res.ok) {
     const text = await res.text();
@@ -56,8 +55,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const data = await res.json();
-  // Trigger.dev returns the run details — extract jobId from the run's output
-  // The task itself returns { jobId, tradeIds, schedulingStarted }
-  return Response.json({ success: true, runId: data.id, ...data });
+  const data = await res.json().catch(() => ({}));
+  return Response.json({ success: true, ...data });
 }
