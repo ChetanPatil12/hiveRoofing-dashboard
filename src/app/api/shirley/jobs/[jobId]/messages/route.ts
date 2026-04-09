@@ -14,11 +14,15 @@ export async function GET(
     let rows: Message[];
 
     if (phone) {
-      // Messages sent to or received from this specific phone number
+      // Normalize both sides to digits-only for comparison so that
+      // "+17205551234" matches "(720) 555-1234" stored in either column.
       const result = await pool.query<Message>(
         `SELECT * FROM messages
          WHERE job_id = $1
-           AND (sender_phone = $2 OR recipient_phone = $2)
+           AND (
+             regexp_replace(sender_phone, '[^0-9]', '', 'g') = regexp_replace($2, '[^0-9]', '', 'g')
+             OR regexp_replace(recipient_phone, '[^0-9]', '', 'g') = regexp_replace($2, '[^0-9]', '', 'g')
+           )
          ORDER BY timestamp ASC`,
         [jobId, phone]
       );

@@ -41,11 +41,25 @@ export async function POST(request: Request) {
     (body.phone as string) ||
     '';
 
-  const message_body =
-    (body.sms_body as string) ||
-    (body.message as string) ||
-    (body.body as string) ||
-    '';
+  // GHL sometimes sends the body as a JSON string: {"type":2,"body":"actual text"}
+  // Extract the inner .body string if that's the case
+  function extractMessageBody(raw: unknown): string {
+    if (typeof raw !== 'string') return '';
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (typeof parsed.body === 'string') return parsed.body;
+        if (typeof parsed.text === 'string') return parsed.text;
+        if (typeof parsed.message === 'string') return parsed.message;
+      } catch { /* not JSON, fall through */ }
+    }
+    return trimmed;
+  }
+
+  const message_body = extractMessageBody(
+    body.sms_body ?? body.message ?? body.body ?? ''
+  );
 
   const ghl_message_id =
     (body.contact_id as string) ||
