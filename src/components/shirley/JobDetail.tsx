@@ -10,6 +10,9 @@ interface JobDetailData extends Job {
   appointments: Appointment[];
 }
 
+// Tab can be 'homeowner' or a trade_id
+type ActiveTab = 'homeowner' | string;
+
 interface Props {
   jobId: string;
   onClose: () => void;
@@ -19,11 +22,12 @@ function AppointmentStatus({ appt }: { appt: Appointment | undefined }) {
   if (!appt) return <span className="text-xs text-gray-400">No appointment</span>;
   const time = appt.confirmed_time ?? appt.proposed_time;
   const label = appt.status === 'confirmed' ? 'Confirmed' : appt.status === 'proposed' ? 'Proposed' : appt.status;
-  const style = appt.status === 'confirmed'
-    ? 'bg-green-100 text-green-700'
-    : appt.status === 'proposed'
-    ? 'bg-yellow-100 text-yellow-700'
-    : 'bg-gray-100 text-gray-600';
+  const style =
+    appt.status === 'confirmed'
+      ? 'bg-green-100 text-green-700'
+      : appt.status === 'proposed'
+      ? 'bg-yellow-100 text-yellow-700'
+      : 'bg-gray-100 text-gray-600';
   return (
     <div className="flex items-center gap-2">
       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${style}`}>{label}</span>
@@ -43,12 +47,21 @@ function AppointmentStatus({ appt }: { appt: Appointment | undefined }) {
   );
 }
 
+const TRADE_STATUS_STYLE: Record<string, string> = {
+  not_started: 'bg-gray-100 text-gray-600',
+  scheduling: 'bg-yellow-100 text-yellow-700',
+  scheduled: 'bg-blue-100 text-blue-700',
+  in_progress: 'bg-purple-100 text-purple-700',
+  completed: 'bg-green-100 text-green-700',
+};
+
 export default function JobDetail({ jobId, onClose }: Props) {
   const [job, setJob] = useState<JobDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTradeIdx, setActiveTradeIdx] = useState(0);
-  const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
+  const [activeTab, setActiveTab] = useState<ActiveTab>('homeowner');
+  // Per-tab optimistic messages keyed by phone number
+  const [optimisticMessages, setOptimisticMessages] = useState<Record<string, Message[]>>({});
 
   const fetchJob = useCallback(async () => {
     try {
@@ -67,11 +80,11 @@ export default function JobDetail({ jobId, onClose }: Props) {
   useEffect(() => {
     setLoading(true);
     setJob(null);
-    setOptimisticMessages([]);
+    setOptimisticMessages({});
+    setActiveTab('homeowner');
     fetchJob();
   }, [fetchJob]);
 
-  // Escape key
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
@@ -80,8 +93,11 @@ export default function JobDetail({ jobId, onClose }: Props) {
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  function handleMessageSent(msg: Message) {
-    setOptimisticMessages((prev) => [...prev, msg]);
+  function handleMessageSent(phone: string, msg: Message) {
+    setOptimisticMessages((prev) => ({
+      ...prev,
+      [phone]: [...(prev[phone] ?? []), msg],
+    }));
   }
 
   if (loading) {
@@ -113,18 +129,16 @@ export default function JobDetail({ jobId, onClose }: Props) {
 
   const trades = job.trades ?? [];
   const appointments = job.appointments ?? [];
-  const activeTrade = trades[activeTradeIdx];
-  const tradeAppt = activeTrade
-    ? appointments.find((a) => a.trade_id === activeTrade.trade_id)
-    : undefined;
 
-  const TRADE_STATUS_STYLE: Record<string, string> = {
-    not_started: 'bg-gray-100 text-gray-600',
-    scheduling: 'bg-yellow-100 text-yellow-700',
-    scheduled: 'bg-blue-100 text-blue-700',
-    in_progress: 'bg-purple-100 text-purple-700',
-    completed: 'bg-green-100 text-green-700',
-  };
+  // Determine active context from tab
+  const isHomeownerTab = activeTab === 'homeowner';
+  const activeTrade = isHomeownerTab ? null : trades.find((t) => t.trade_id === activeTab) ?? null;
+  const tradeAppt = activeTrade ? appointments.find((a) => a.trade_id === activeTrade.trade_id) : undefined;
+
+  // Phone for current tab
+  const activePhone = isHomeownerTab ? job.homeowner_phone : (activeTrade?.sub_phone ?? '');
+  const activeName = isHomeownerTab ? job.homeowner_name : (activeTrade?.sub_name ?? 'Sub');
+  const activeTradeId = isHomeownerTab ? undefined : activeTrade?.trade_id;
 
   return (
     <aside className="fixed right-0 top-0 h-full w-full max-w-[520px] bg-white shadow-2xl z-30 flex flex-col">
@@ -149,56 +163,80 @@ export default function JobDetail({ jobId, onClose }: Props) {
         </button>
       </div>
 
-      {/* Trade tabs */}
-      {trades.length > 0 && (
-        <div className="flex-shrink-0 border-b border-gray-200">
-          <div className="flex overflow-x-auto">
-            {trades.map((trade, idx) => (
-              <button
-                key={trade.trade_id}
-                onClick={() => setActiveTradeIdx(idx)}
-                className={`px-4 py-2.5 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${
-                  activeTradeIdx === idx
-                    ? 'border-[#e85d04] text-[#e85d04]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {trade.trade_type}
-              </button>
-            ))}
-          </div>
-          {activeTrade && (
-            <div className="px-4 py-2.5 bg-gray-50 text-xs text-gray-600 space-y-1.5">
-              <div className="flex items-center gap-3">
-                <span className="text-gray-400">Sub:</span>
-                <span className="font-medium">{activeTrade.sub_name ?? '—'}</span>
-                {activeTrade.sub_phone && <span className="text-gray-400">{activeTrade.sub_phone}</span>}
-                <span className={`ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${TRADE_STATUS_STYLE[activeTrade.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                  {activeTrade.status.replace('_', ' ')}
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-gray-400">Access:</span>
-                <span className="capitalize">{activeTrade.access_type}</span>
-                <span className="text-gray-400 ml-3">Appointment:</span>
-                <AppointmentStatus appt={tradeAppt} />
-              </div>
+      {/* Tabs: Homeowner + one per trade/sub */}
+      <div className="flex-shrink-0 border-b border-gray-200">
+        <div className="flex overflow-x-auto">
+          {/* Homeowner tab */}
+          <button
+            onClick={() => setActiveTab('homeowner')}
+            className={`px-4 py-2.5 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${
+              isHomeownerTab
+                ? 'border-[#e85d04] text-[#e85d04]'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Homeowner
+          </button>
+
+          {/* One tab per trade (sub conversation) */}
+          {trades.map((trade) => (
+            <button
+              key={trade.trade_id}
+              onClick={() => setActiveTab(trade.trade_id)}
+              className={`px-4 py-2.5 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${
+                activeTab === trade.trade_id
+                  ? 'border-[#e85d04] text-[#e85d04]'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {trade.trade_type}
+            </button>
+          ))}
+        </div>
+
+        {/* Context bar — shows sub info + status when on a trade tab */}
+        {!isHomeownerTab && activeTrade && (
+          <div className="px-4 py-2.5 bg-gray-50 text-xs text-gray-600 space-y-1.5">
+            <div className="flex items-center gap-3">
+              <span className="text-gray-400">Sub:</span>
+              <span className="font-medium">{activeTrade.sub_name ?? '—'}</span>
+              {activeTrade.sub_phone && <span className="text-gray-400">{activeTrade.sub_phone}</span>}
+              <span className={`ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${TRADE_STATUS_STYLE[activeTrade.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                {activeTrade.status.replace('_', ' ')}
+              </span>
             </div>
-          )}
+            <div className="flex items-center gap-3">
+              <span className="text-gray-400">Access:</span>
+              <span className="capitalize">{activeTrade.access_type}</span>
+              <span className="text-gray-400 ml-3">Appointment:</span>
+              <AppointmentStatus appt={tradeAppt} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Conversation — scoped to active tab's phone */}
+      <ConversationThread
+        key={activePhone} // remount when tab changes so it resets scroll and messages
+        jobId={jobId}
+        phone={activePhone}
+        optimisticMessages={optimisticMessages[activePhone] ?? []}
+      />
+
+      {/* Composer — sends to whoever's tab is active */}
+      {activePhone ? (
+        <MessageComposer
+          jobId={jobId}
+          recipientPhone={activePhone}
+          recipientName={activeName}
+          tradeId={activeTradeId}
+          onMessageSent={(msg) => handleMessageSent(activePhone, msg)}
+        />
+      ) : (
+        <div className="border-t border-gray-200 p-3 text-xs text-gray-400 text-center flex-shrink-0">
+          No phone number on file for this subcontractor
         </div>
       )}
-
-      {/* Conversation */}
-      <ConversationThread jobId={jobId} optimisticMessages={optimisticMessages} />
-
-      {/* Composer */}
-      <MessageComposer
-        jobId={jobId}
-        homeownerPhone={job.homeowner_phone}
-        homeownerName={job.homeowner_name}
-        trades={trades}
-        onMessageSent={handleMessageSent}
-      />
     </aside>
   );
 }

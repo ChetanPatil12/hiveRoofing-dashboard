@@ -1,53 +1,34 @@
 'use client';
 
 import { useState } from 'react';
-import type { Trade, Message } from '@/types/shirley';
-
-interface Recipient {
-  label: string;
-  phone: string;
-  tradeId?: string;
-}
+import type { Message } from '@/types/shirley';
 
 interface Props {
   jobId: string;
-  homeownerPhone: string;
-  homeownerName: string;
-  trades: Trade[];
+  recipientPhone: string;
+  recipientName: string;
+  tradeId?: string;
   onMessageSent: (msg: Message) => void;
 }
 
-export default function MessageComposer({ jobId, homeownerPhone, homeownerName, trades, onMessageSent }: Props) {
-  const recipients: Recipient[] = [
-    { label: homeownerName || 'Homeowner', phone: homeownerPhone },
-    ...trades.map((t) => ({
-      label: `${t.sub_name ?? 'Sub'} (${t.trade_type})`,
-      phone: t.sub_phone ?? '',
-      tradeId: t.trade_id,
-    })).filter((r) => r.phone),
-  ];
-
-  const [selectedPhone, setSelectedPhone] = useState(recipients[0]?.phone ?? '');
+export default function MessageComposer({ jobId, recipientPhone, recipientName, tradeId, onMessageSent }: Props) {
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const selectedRecipient = recipients.find((r) => r.phone === selectedPhone);
-
   async function handleSend() {
-    if (!body.trim() || !selectedPhone) return;
+    if (!body.trim() || !recipientPhone) return;
     setError(null);
     setSending(true);
 
-    // Optimistic message
     const optimisticMsg: Message = {
       message_id: `optimistic-${Date.now()}`,
       job_id: jobId,
-      trade_id: selectedRecipient?.tradeId ?? null,
+      trade_id: tradeId ?? null,
       timestamp: new Date().toISOString(),
       direction: 'outbound',
       sender_phone: '',
-      recipient_phone: selectedPhone,
+      recipient_phone: recipientPhone,
       message_body: body.trim(),
       sender_type: 'employee',
       message_type: 'custom',
@@ -66,10 +47,10 @@ export default function MessageComposer({ jobId, homeownerPhone, homeownerName, 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jobId,
-          recipientPhone: selectedPhone,
+          recipientPhone,
           messageBody: optimisticMsg.message_body,
           employeeId: 'staff',
-          tradeId: selectedRecipient?.tradeId,
+          tradeId,
         }),
       });
       if (!res.ok) {
@@ -91,37 +72,24 @@ export default function MessageComposer({ jobId, homeownerPhone, homeownerName, 
   }
 
   return (
-    <div className="border-t border-gray-200 bg-white p-3 space-y-2">
+    <div className="border-t border-gray-200 bg-white p-3 space-y-2 flex-shrink-0">
       {error && (
         <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
           {error}
         </p>
       )}
-      <div className="flex gap-2">
-        <select
-          value={selectedPhone}
-          onChange={(e) => setSelectedPhone(e.target.value)}
-          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#e85d04] focus:border-transparent"
-        >
-          {recipients.map((r) => (
-            <option key={r.phone} value={r.phone}>
-              {r.label}
-            </option>
-          ))}
-        </select>
-      </div>
       <div className="flex gap-2 items-end">
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Type a message… (Enter to send)"
+          placeholder={`Message ${recipientName}… (Enter to send)`}
           rows={2}
           className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-[#e85d04] focus:border-transparent"
         />
         <button
           onClick={handleSend}
-          disabled={!body.trim() || sending}
+          disabled={!body.trim() || sending || !recipientPhone}
           className="flex-shrink-0 w-9 h-9 rounded-xl bg-[#e85d04] hover:bg-[#d05203] disabled:opacity-40 flex items-center justify-center transition-colors"
         >
           {sending ? (

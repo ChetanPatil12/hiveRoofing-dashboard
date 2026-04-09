@@ -46,30 +46,32 @@ const SENDER_LABEL: Record<string, string> = {
 
 interface Props {
   jobId: string;
+  phone: string; // filter messages to/from this phone number
   optimisticMessages?: Message[];
 }
 
-export default function ConversationThread({ jobId, optimisticMessages = [] }: Props) {
+export default function ConversationThread({ jobId, phone, optimisticMessages = [] }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const fetchMessages = useCallback(async () => {
     try {
-      const res = await fetch(`/api/shirley/jobs/${jobId}/messages`);
+      const qs = phone ? `?phone=${encodeURIComponent(phone)}` : '';
+      const res = await fetch(`/api/shirley/jobs/${jobId}/messages${qs}`);
       if (!res.ok) return;
       const data = await res.json();
       setMessages(data.messages ?? []);
     } finally {
       setLoading(false);
     }
-  }, [jobId]);
+  }, [jobId, phone]);
 
   useEffect(() => {
     setLoading(true);
     setMessages([]);
     fetchMessages();
-    const interval = setInterval(fetchMessages, 30_000);
+    const interval = setInterval(fetchMessages, 15_000);
     return () => clearInterval(interval);
   }, [fetchMessages]);
 
