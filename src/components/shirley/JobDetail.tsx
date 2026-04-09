@@ -145,13 +145,11 @@ export default function JobDetail({ jobId, onClose }: Props) {
       {/* Header */}
       <div className="flex items-start justify-between p-4 border-b border-gray-200 flex-shrink-0">
         <div>
-          <h2 className="font-semibold text-gray-900 text-sm leading-tight">{job.property_address}</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {job.homeowner_name}
-            {job.homeowner_phone && (
-              <span className="ml-2 text-gray-400">· {job.homeowner_phone}</span>
-            )}
-          </p>
+          <h2 className="font-semibold text-gray-900 text-sm leading-tight">{job.homeowner_name}</h2>
+          <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{job.property_address}</p>
+          {job.homeowner_phone && (
+            <p className="text-xs text-gray-400">{job.homeowner_phone}</p>
+          )}
         </div>
         <button
           onClick={onClose}

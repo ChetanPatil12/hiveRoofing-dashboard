@@ -121,20 +121,22 @@ export default function JobList({ selectedJobId }: Props) {
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-medium text-gray-900 leading-tight line-clamp-1">
-                    {job.property_address}
+                  <p className="text-sm font-semibold text-gray-900 leading-tight line-clamp-1">
+                    {job.homeowner_name}
                   </p>
                   <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap flex-shrink-0 ${badge.className}`}>
                     {badge.label}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500 mt-0.5">{job.homeowner_name}</p>
-                <div className="flex items-center justify-between mt-1.5">
-                  <span className="text-xs text-gray-400">
-                    {(job.trades ?? []).length} trade{(job.trades ?? []).length !== 1 ? 's' : ''}
-                  </span>
+                {(job.trades ?? []).length > 0 && (
+                  <p className="text-xs text-[#e85d04] font-medium mt-0.5">
+                    {(job.trades ?? []).map((t) => t.trade_type).join(' · ')}
+                  </p>
+                )}
+                <div className="flex items-center justify-between mt-1">
+                  <p className="text-xs text-gray-400 line-clamp-1">{job.property_address}</p>
                   {job.last_message_at && (
-                    <span className="text-[10px] text-gray-400">{formatRelative(job.last_message_at)}</span>
+                    <span className="text-[10px] text-gray-400 flex-shrink-0 ml-2">{formatRelative(job.last_message_at)}</span>
                   )}
                 </div>
               </button>

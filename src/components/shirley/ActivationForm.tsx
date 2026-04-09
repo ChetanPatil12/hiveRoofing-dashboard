@@ -40,7 +40,7 @@ function defaultTrade(): TradeRow {
   return tradeRowFromAccuLynx('');
 }
 
-export default function ActivationForm() {
+export default function ActivationForm({ subsKey = 0 }: { subsKey?: number }) {
   const router = useRouter();
 
   // Job search
@@ -68,13 +68,13 @@ export default function ActivationForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load all subcontractors on mount
+  // Load all subcontractors on mount and whenever subsKey changes (new sub added)
   useEffect(() => {
     fetch('/api/shirley/subcontractors')
       .then((r) => r.json())
       .then((d) => setAllSubs(d.subcontractors ?? []))
       .catch(() => {});
-  }, []);
+  }, [subsKey]);
 
   // ── AccuLynx search ──────────────────────────────────────────────────────────
 
@@ -426,10 +426,10 @@ export default function ActivationForm() {
           {submitting ? (
             <>
               <Spinner />
-              Starting job…
+              Coordinating…
             </>
           ) : (
-            'Start Job'
+            'Begin Coordination'
           )}
         </button>
       )}

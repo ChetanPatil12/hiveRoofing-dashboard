@@ -15,8 +15,15 @@ export default function MessageComposer({ jobId, recipientPhone, recipientName, 
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  function handleSendClick() {
+    if (!body.trim() || !recipientPhone) return;
+    setShowConfirm(true);
+  }
 
   async function handleSend() {
+    setShowConfirm(false);
     if (!body.trim() || !recipientPhone) return;
     setError(null);
     setSending(true);
@@ -67,12 +74,47 @@ export default function MessageComposer({ jobId, recipientPhone, recipientName, 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      handleSendClick();
     }
   }
 
   return (
     <div className="border-t border-gray-200 bg-white p-3 space-y-2 flex-shrink-0">
+      {/* Confirmation dialog */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-full bg-yellow-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Send this message?</h3>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  This is an automated system — Shirley AI is already handling scheduling conversations. Only send a manual message if it is truly necessary. Unnecessary messages can confuse the homeowner or subcontractor and disrupt the automated flow.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowConfirm(false)}
+                className="flex-1 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSend}
+                className="flex-1 py-2 text-sm font-medium bg-[#e85d04] hover:bg-[#d05203] text-white rounded-xl transition-colors"
+              >
+                Yes, send it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {error && (
         <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
           {error}
@@ -88,7 +130,7 @@ export default function MessageComposer({ jobId, recipientPhone, recipientName, 
           className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-[#e85d04] focus:border-transparent"
         />
         <button
-          onClick={handleSend}
+          onClick={handleSendClick}
           disabled={!body.trim() || sending || !recipientPhone}
           className="flex-shrink-0 w-9 h-9 rounded-xl bg-[#e85d04] hover:bg-[#d05203] disabled:opacity-40 flex items-center justify-center transition-colors"
         >
