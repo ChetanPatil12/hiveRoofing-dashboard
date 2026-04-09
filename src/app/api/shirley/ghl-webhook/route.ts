@@ -1,10 +1,22 @@
 // GHL posts here when an inbound SMS is received.
 // We forward it to the shirley-inbound-message Trigger.dev task.
 
+/** Strip everything except digits, then normalise to E.164 +1XXXXXXXXXX */
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  // If 10 digits, prepend country code
+  if (digits.length === 10) return `+1${digits}`;
+  // If 11 digits starting with 1, add +
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  // Otherwise return as-is with + prefix if not already there
+  return raw.startsWith('+') ? raw : `+${digits}`;
+}
+
 export async function POST(request: Request) {
   const triggerSecret = process.env.SHIRLEY_TRIGGER_SECRET_KEY;
 
   if (!triggerSecret) {
+    console.error('[ghl-webhook] SHIRLEY_TRIGGER_SECRET_KEY is not set');
     return Response.json(
       { error: 'SHIRLEY_TRIGGER_SECRET_KEY is not set' },
       { status: 500 }
@@ -15,31 +27,39 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
+    console.error('[ghl-webhook] Failed to parse request body');
     return Response.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
+  // Log the full raw payload so we can debug field name mismatches in Vercel logs
+  console.log('[ghl-webhook] Raw payload:', JSON.stringify(body));
+
   // GHL custom data field names (as configured in GHL webhook settings)
-  const phone =
-    (body.contact_phone as string) ??
-    (body.contact_phone_raw as string) ??
-    (body.phone as string) ??
+  const rawPhone =
+    (body.contact_phone as string) ||
+    (body.contact_phone_raw as string) ||
+    (body.phone as string) ||
     '';
 
   const message_body =
-    (body.sms_body as string) ??
-    (body.message as string) ??
-    (body.body as string) ??
+    (body.sms_body as string) ||
+    (body.message as string) ||
+    (body.body as string) ||
     '';
 
   const ghl_message_id =
-    (body.contact_id as string) ??
-    (body.messageId as string) ??
+    (body.contact_id as string) ||
+    (body.messageId as string) ||
     `ghl-${Date.now()}`;
 
-  if (!phone || !message_body) {
+  if (!rawPhone || !message_body) {
+    console.warn('[ghl-webhook] Missing phone or message_body — ignoring. phone:', rawPhone, 'body:', message_body);
     // Not an SMS we care about — acknowledge silently so GHL doesn't retry
     return Response.json({ received: true });
   }
+
+  const phone = normalizePhone(rawPhone);
+  console.log(`[ghl-webhook] Received SMS from ${rawPhone} → normalized: ${phone} | body: "${message_body}"`);
 
   const res = await fetch(
     'https://api.trigger.dev/api/v1/tasks/shirley-inbound-message/trigger',
