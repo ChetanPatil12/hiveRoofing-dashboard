@@ -3,6 +3,18 @@ import { google } from 'googleapis';
 const SHEET_ID = '1SbXGNNpSAKSX_92kus4QEr7q86m-xYSFVz2KxGXp-8w';
 const TAB_NAME = 'review_tracker';
 
+// Must match the automation's SHEET_COLUMNS exactly — this is the source of truth,
+// not the sheet header row (which is missing step6_confirmed and step6_confirmed_date).
+const SHEET_COLUMNS = [
+  'customer_id', 'job_id', 'customer_name', 'customer_email', 'customer_phone',
+  'customer_address', 'review_link_base', 'current_step', 'status', 'last_milestone',
+  'job_closed_date', 'last_request_date', 'last_request_step', 'initial_rating',
+  'initial_feedback', 'step1_confirmed', 'step1_confirmed_date', 'step2_confirmed',
+  'step2_confirmed_date', 'step3_confirmed', 'step3_confirmed_date', 'step4_confirmed',
+  'step4_confirmed_date', 'step5_confirmed', 'step5_confirmed_date', 'step6_confirmed',
+  'step6_confirmed_date', 'notes', 'created_date', 'last_updated', 'post_close_reminder_count',
+] as const;
+
 function getSheetsClient() {
   const auth = new google.auth.OAuth2(
     process.env.GOOGLE_SHEETS_CLIENT_ID,
@@ -61,25 +73,22 @@ export async function PATCH(
       return Response.json({ error: 'Sheet has no data' }, { status: 404 });
     }
 
-    const headers = rows[0];
-    const col = (name: string) => headers.indexOf(name);
+    // Use hardcoded SHEET_COLUMNS as the source of truth — the sheet's header row is
+    // incomplete (missing step6_confirmed and step6_confirmed_date), so reading headers
+    // would map created_date/last_updated to the wrong columns.
+    const col = (name: string) => SHEET_COLUMNS.indexOf(name as typeof SHEET_COLUMNS[number]);
 
-    const customerIdColIdx = col('customer_id');
-    if (customerIdColIdx === -1) {
-      return Response.json({ error: 'customer_id column not found in sheet' }, { status: 500 });
-    }
-
-    // Data rows start at index 1 (sheet row 2)
-    const dataRowIdx = rows.slice(1).findIndex(row => row[customerIdColIdx] === customerId);
+    // customer_id is always index 0 (first column)
+    const dataRowIdx = rows.slice(1).findIndex(row => row[0] === customerId);
     if (dataRowIdx === -1) {
       return Response.json({ error: 'Customer not found' }, { status: 404 });
     }
 
     const sheetRowNum = dataRowIdx + 2; // 1-indexed sheet row
-    const rowData = [...rows[dataRowIdx + 1]] as string[];
 
-    // Pad row to header length in case trailing empty cells were trimmed
-    while (rowData.length < headers.length) rowData.push('');
+    // Pad or trim to exactly SHEET_COLUMNS.length so the write range always matches.
+    const rowData = rows[dataRowIdx + 1].slice(0, SHEET_COLUMNS.length) as string[];
+    while (rowData.length < SHEET_COLUMNS.length) rowData.push('');
 
     const now = new Date().toISOString();
 
@@ -107,7 +116,7 @@ export async function PATCH(
 
     rowData[col('last_updated')] = now;
 
-    const lastCol = columnLetter(headers.length);
+    const lastCol = columnLetter(SHEET_COLUMNS.length);
     const range = `${TAB_NAME}!A${sheetRowNum}:${lastCol}${sheetRowNum}`;
 
     await sheetsClient.spreadsheets.values.update({
