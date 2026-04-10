@@ -58,6 +58,48 @@ export default function Dashboard() {
 
   const selectedCustomer = customers.find((c) => c.customer_id === selectedId) ?? null;
 
+  const handleStepUpdate = useCallback(async (step: number, action: 'approve' | 'revert') => {
+    if (!selectedId) return;
+
+    const res = await fetch(`/api/sheet/${selectedId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step, action }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error ?? `HTTP ${res.status}`);
+    }
+
+    const now = new Date().toISOString();
+
+    // Optimistic update — reflect change immediately in UI
+    setCustomers(prev => prev.map(c => {
+      if (c.customer_id !== selectedId) return c;
+      const updated = { ...c } as typeof c & Record<string, string>;
+      if (action === 'approve') {
+        updated[`step${step}_confirmed`] = 'yes';
+        updated[`step${step}_confirmed_date`] = now;
+        if (step >= c.current_step) {
+          updated.current_step = step === 6 ? 6 : step + 1;
+        }
+        if (c.status === 'pending') updated.status = 'active';
+        if (step === 6) updated.status = 'completed';
+      } else {
+        updated[`step${step}_confirmed`] = '';
+        updated[`step${step}_confirmed_date`] = '';
+        updated.current_step = step;
+        if (c.status === 'completed') updated.status = 'active';
+      }
+      updated.last_updated = now;
+      return updated;
+    }));
+
+    // Background sync to pick up any other sheet changes
+    fetchData();
+  }, [selectedId, fetchData]);
+
   const filtered = customers.filter((c) => {
     const q = search.toLowerCase();
     const matchesSearch =
@@ -221,6 +263,7 @@ export default function Dashboard() {
         <DetailPanel
           customer={selectedCustomer}
           onClose={() => setSelectedId(null)}
+          onStepUpdate={handleStepUpdate}
         />
       )}
 

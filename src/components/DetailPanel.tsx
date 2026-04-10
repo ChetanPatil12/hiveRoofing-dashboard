@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   type Customer,
   STATUS_LABEL,
@@ -12,6 +12,7 @@ import {
 interface Props {
   customer: Customer;
   onClose: () => void;
+  onStepUpdate: (step: number, action: 'approve' | 'revert') => Promise<void>;
 }
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
@@ -66,7 +67,22 @@ function StarRating({ rating }: { rating: string }) {
   );
 }
 
-export default function DetailPanel({ customer, onClose }: Props) {
+export default function DetailPanel({ customer, onClose, onStepUpdate }: Props) {
+  const [loadingStep, setLoadingStep] = useState<number | null>(null);
+  const [stepError, setStepError] = useState<string | null>(null);
+
+  async function handleStepAction(step: number, action: 'approve' | 'revert') {
+    setLoadingStep(step);
+    setStepError(null);
+    try {
+      await onStepUpdate(step, action);
+    } catch (err) {
+      setStepError(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setLoadingStep(null);
+    }
+  }
+
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
@@ -160,6 +176,11 @@ export default function DetailPanel({ customer, onClose }: Props) {
             <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
               Review Steps
             </h3>
+            {stepError && (
+              <p className="mb-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {stepError}
+              </p>
+            )}
             <div className="space-y-2">
               {[1, 2, 3, 4, 5, 6].map((s) => {
                 const confirmed =
@@ -168,6 +189,7 @@ export default function DetailPanel({ customer, onClose }: Props) {
                   `step${s}_confirmed_date` as keyof Customer
                 ] as string;
                 const isCurrent = customer.current_step === s;
+                const isLoading = loadingStep === s;
                 return (
                   <div
                     key={s}
@@ -211,6 +233,36 @@ export default function DetailPanel({ customer, onClose }: Props) {
                         </div>
                       )}
                     </div>
+                    {/* Manual override button */}
+                    {isLoading ? (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 text-gray-400 text-xs font-medium flex-shrink-0">
+                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                        </svg>
+                        Saving…
+                      </div>
+                    ) : confirmed ? (
+                      <button
+                        onClick={() => handleStepAction(s, 'revert')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 bg-white text-red-500 text-xs font-medium hover:bg-red-50 transition-colors flex-shrink-0"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                        </svg>
+                        Undo Review
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleStepAction(s, 'approve')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-300 bg-white text-green-600 text-xs font-medium hover:bg-green-50 transition-colors flex-shrink-0"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Mark Reviewed
+                      </button>
+                    )}
                   </div>
                 );
               })}
