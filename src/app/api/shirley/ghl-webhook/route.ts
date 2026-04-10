@@ -34,10 +34,15 @@ export async function POST(request: Request) {
   // Log the full raw payload so we can debug field name mismatches in Vercel logs
   console.log('[ghl-webhook] Raw payload:', JSON.stringify(body));
 
-  // GHL custom data field names (as configured in GHL webhook settings)
+  // GHL workflow payloads nest custom fields under body.customData
+  // Fall back to top-level for direct/manual test calls
+  const custom = (body.customData as Record<string, unknown>) ?? {};
+
   const rawPhone =
-    (body.contact_phone as string) ||
+    (custom.contact_phone_raw as string) ||
+    (custom.contact_phone as string) ||
     (body.contact_phone_raw as string) ||
+    (body.contact_phone as string) ||
     (body.phone as string) ||
     '';
 
@@ -58,10 +63,11 @@ export async function POST(request: Request) {
   }
 
   const message_body = extractMessageBody(
-    body.sms_body ?? body.message ?? body.body ?? ''
+    custom.sms_body ?? body.sms_body ?? body.message ?? body.body ?? ''
   );
 
   const ghl_message_id =
+    (custom.contact_id as string) ||
     (body.contact_id as string) ||
     (body.messageId as string) ||
     `ghl-${Date.now()}`;
