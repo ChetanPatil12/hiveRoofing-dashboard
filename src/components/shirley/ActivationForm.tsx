@@ -64,6 +64,10 @@ export default function ActivationForm({ subsKey = 0 }: { subsKey?: number }) {
   // Subcontractors — loaded once on mount
   const [allSubs, setAllSubs] = useState<Subcontractor[]>([]);
 
+  // Job notes / measurements
+  const [jobNotes, setJobNotes] = useState('');
+  const [pdfLoading, setPdfLoading] = useState(false);
+
   // Submit
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,6 +134,31 @@ export default function ActivationForm({ subsKey = 0 }: { subsKey?: number }) {
     }
   }
 
+  // ── PDF upload ───────────────────────────────────────────────────────────────
+
+  async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset input so same file can be re-uploaded if needed
+    e.target.value = '';
+    setPdfLoading(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/shirley/extract-pdf', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'PDF extraction failed');
+      setJobNotes((prev) =>
+        prev ? `${prev}\n\n--- From ${file.name} ---\n${data.text}` : data.text
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to extract PDF');
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
   // ── Trade helpers ────────────────────────────────────────────────────────────
 
   function updateTrade(id: string, patch: Partial<TradeRow>) {
@@ -187,6 +216,7 @@ export default function ActivationForm({ subsKey = 0 }: { subsKey?: number }) {
         propertyAddress: address.trim(),
         homeowner: { name: homeownerName.trim(), phone: homeownerPhone.trim(), language: homeownerLanguage },
         trades: trades.map(({ id: _id, subError: _e, ...t }) => t),
+        jobNotes: jobNotes.trim() || undefined,
       };
 
       const res = await fetch('/api/shirley/activate', {
@@ -408,6 +438,39 @@ export default function ActivationForm({ subsKey = 0 }: { subsKey?: number }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Job notes & measurements */}
+      {address && (
+        <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-2">
+          <h2 className="text-sm font-semibold text-gray-700">Job Notes & Measurements</h2>
+          <p className="text-[11px] text-gray-400">
+            Add measurements, scope notes, or upload an EagleView / hover report. Shirley will use this to answer questions about the job.
+          </p>
+          <textarea
+            value={jobNotes}
+            onChange={(e) => setJobNotes(e.target.value)}
+            placeholder="e.g. Repair only. 22 squares. Hip roof. GAF shingles."
+            rows={4}
+            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-y focus:outline-none focus:ring-2 focus:ring-[#e85d04]"
+          />
+          <div className="flex items-center gap-3">
+            <label className={`cursor-pointer text-xs font-medium transition-colors ${pdfLoading ? 'text-gray-400 pointer-events-none' : 'text-[#e85d04] hover:underline'}`}>
+              {pdfLoading ? 'Extracting PDF…' : '+ Upload PDF (EagleView, hover report)'}
+              <input
+                type="file"
+                accept=".pdf"
+                className="hidden"
+                onChange={handlePdfUpload}
+                disabled={pdfLoading}
+              />
+            </label>
+            {pdfLoading && <Spinner />}
+            {jobNotes && !pdfLoading && (
+              <span className="text-[11px] text-gray-400">{jobNotes.length} chars</span>
+            )}
+          </div>
         </div>
       )}
 

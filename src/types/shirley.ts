@@ -84,6 +84,7 @@ export interface Job {
   language_preference: 'en' | 'es';
   current_status: string;
   acculynx_job_id: string | null;
+  job_notes: string | null;
   created_at: string;
   updated_at: string;
   // joined / computed
@@ -144,6 +145,7 @@ export interface ActivationPayload {
     language: 'en' | 'es';
   };
   trades: ActivationTrade[];
+  jobNotes?: string;
 }
 
 // Send message payload
