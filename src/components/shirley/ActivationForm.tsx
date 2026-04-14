@@ -147,10 +147,16 @@ export default function ActivationForm({ subsKey = 0 }: { subsKey?: number }) {
       const fd = new FormData();
       fd.append('file', file);
       const res = await fetch('/api/shirley/extract-pdf', { method: 'POST', body: fd });
-      const data = await res.json();
+      const text = await res.text();
+      let data: { text?: string; error?: string };
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(`Server error (${res.status}) — check that OPENAI_API_KEY is set in Vercel environment variables`);
+      }
       if (!res.ok) throw new Error(data.error ?? 'PDF extraction failed');
       setJobNotes((prev) =>
-        prev ? `${prev}\n\n--- From ${file.name} ---\n${data.text}` : data.text
+        prev ? `${prev}\n\n--- From ${file.name} ---\n${data.text}` : (data.text ?? '')
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to extract PDF');

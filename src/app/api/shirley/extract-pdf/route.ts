@@ -1,34 +1,41 @@
-// pdf-parse is a CJS module — must use require to avoid ESM default export issues with Turbopack
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
 import OpenAI from "openai";
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 export async function POST(req: Request) {
-  const formData = await req.formData();
-  const file = formData.get("file") as File | null;
-  if (!file) {
-    return Response.json({ error: "No file provided" }, { status: 400 });
-  }
-  if (!file.name.toLowerCase().endsWith(".pdf")) {
-    return Response.json({ error: "Only PDF files are supported" }, { status: 400 });
-  }
+  try {
+    const formData = await req.formData();
+    const file = formData.get("file") as File | null;
+    if (!file) {
+      return Response.json({ error: "No file provided" }, { status: 400 });
+    }
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      return Response.json({ error: "Only PDF files are supported" }, { status: 400 });
+    }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const { text: rawText } = await pdfParse(buffer);
+    // Dynamically require pdf-parse inside the handler to avoid ESM/CJS issues at module init
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
 
-  if (!rawText.trim()) {
-    return Response.json({ error: "Could not extract text from PDF" }, { status: 422 });
-  }
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const { text: rawText } = await pdfParse(buffer);
 
-  const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0,
-    messages: [
-      {
-        role: "user",
-        content: `You are extracting key roofing measurements from a PDF report (e.g. EagleView, hover, or similar).
+    if (!rawText.trim()) {
+      return Response.json({ error: "Could not extract text from PDF" }, { status: 422 });
+    }
+
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return Response.json({ error: "OPENAI_API_KEY is not configured on this server" }, { status: 500 });
+    }
+
+    const client = new OpenAI({ apiKey });
+
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      messages: [
+        {
+          role: "user",
+          content: `You are extracting key roofing measurements from a PDF report (e.g. EagleView, hover, or similar).
 
 Extract ONLY the following if present:
 - Total roof area (sq ft)
@@ -58,10 +65,15 @@ Notes: Residential property. No structural changes in past 4 years.
 
 PDF text:
 ${rawText.slice(0, 8000)}`,
-      },
-    ],
-  });
+        },
+      ],
+    });
 
-  const summary = (response.choices[0]?.message?.content ?? rawText).trim();
-  return Response.json({ text: summary });
+    const summary = (response.choices[0]?.message?.content ?? rawText).trim();
+    return Response.json({ text: summary });
+  } catch (err) {
+    console.error("[extract-pdf] Error:", err);
+    const message = err instanceof Error ? err.message : String(err);
+    return Response.json({ error: message }, { status: 500 });
+  }
 }
