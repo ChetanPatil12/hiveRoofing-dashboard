@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { extractText } from "unpdf";
 
 export async function POST(req: Request) {
   try {
@@ -11,20 +12,19 @@ export async function POST(req: Request) {
       return Response.json({ error: "Only PDF files are supported" }, { status: 400 });
     }
 
-    // Dynamically require pdf-parse inside the handler to avoid ESM/CJS issues at module init
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
+    const buffer = await file.arrayBuffer();
+    const { text: rawText } = await extractText(new Uint8Array(buffer), { mergePages: true });
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const { text: rawText } = await pdfParse(buffer);
-
-    if (!rawText.trim()) {
+    if (!rawText?.trim()) {
       return Response.json({ error: "Could not extract text from PDF" }, { status: 422 });
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return Response.json({ error: "OPENAI_API_KEY is not configured on this server" }, { status: 500 });
+      return Response.json(
+        { error: "OPENAI_API_KEY is not configured — add it in Vercel environment variables" },
+        { status: 500 }
+      );
     }
 
     const client = new OpenAI({ apiKey });
