@@ -1,4 +1,6 @@
-import pdfParse from "pdf-parse";
+// pdf-parse is a CJS module — must use require to avoid ESM default export issues with Turbopack
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
 import OpenAI from "openai";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
