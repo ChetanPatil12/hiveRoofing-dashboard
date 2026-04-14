@@ -1,5 +1,4 @@
 import OpenAI from "openai";
-import { extractText } from "unpdf";
 
 export async function POST(req: Request) {
   try {
@@ -12,13 +11,6 @@ export async function POST(req: Request) {
       return Response.json({ error: "Only PDF files are supported" }, { status: 400 });
     }
 
-    const buffer = await file.arrayBuffer();
-    const { text: rawText } = await extractText(new Uint8Array(buffer), { mergePages: true });
-
-    if (!rawText?.trim()) {
-      return Response.json({ error: "Could not extract text from PDF" }, { status: 422 });
-    }
-
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return Response.json(
@@ -26,6 +18,10 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
+
+    // Convert PDF to base64 and send directly to OpenAI — no PDF parsing library needed
+    const buffer = await file.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString("base64");
 
     const client = new OpenAI({ apiKey });
 
@@ -35,7 +31,10 @@ export async function POST(req: Request) {
       messages: [
         {
           role: "user",
-          content: `You are extracting key roofing measurements from a PDF report (e.g. EagleView, hover, or similar).
+          content: [
+            {
+              type: "text",
+              text: `You are extracting key roofing measurements from a PDF report (e.g. EagleView, hover, or similar).
 
 Extract ONLY the following if present:
 - Total roof area (sq ft)
@@ -61,15 +60,24 @@ Pitches: 2/12 → 1,545 sq ft (94.7%), 6/12 → 87 sq ft (5.3%)
 Lengths: Ridges 65.2 ft, Valleys 31.4 ft, Rakes 75 ft, Eaves 101 ft, Flashing 6.6 ft
 Obstructions: 11 (area 20 sq ft, perimeter 58 ft)
 Attic: 1,601.9 sq ft | Suggested waste: 92% → 2.00 squares
-Notes: Residential property. No structural changes in past 4 years.
-
-PDF text:
-${rawText.slice(0, 8000)}`,
+Notes: Residential property. No structural changes in past 4 years.`,
+            },
+            {
+              type: "file",
+              file: {
+                filename: file.name,
+                file_data: `data:application/pdf;base64,${base64}`,
+              },
+            },
+          ],
         },
       ],
     });
 
-    const summary = (response.choices[0]?.message?.content ?? rawText).trim();
+    const summary = (response.choices[0]?.message?.content ?? "").trim();
+    if (!summary) {
+      return Response.json({ error: "No content extracted from PDF" }, { status: 422 });
+    }
     return Response.json({ text: summary });
   } catch (err) {
     console.error("[extract-pdf] Error:", err);
