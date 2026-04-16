@@ -1,10 +1,18 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function Home() {
   const [installModal, setInstallModal] = useState<'ios' | 'android' | null>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
+
+  useEffect(() => {
+    setIsStandalone(
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as { standalone?: boolean }).standalone === true
+    );
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
@@ -61,8 +69,8 @@ export default function Home() {
         </Link>
       </div>
 
-      {/* Install app section */}
-      <div className="mt-10 w-full max-w-2xl">
+      {/* Install app section — hidden when running as installed PWA */}
+      {!isStandalone && <div className="mt-10 w-full max-w-2xl">
         <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-1">
             <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -94,7 +102,7 @@ export default function Home() {
             </button>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* iOS install modal */}
       {installModal === 'ios' && (

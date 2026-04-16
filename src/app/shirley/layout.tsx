@@ -95,7 +95,8 @@ export default function ShirleyLayout({ children }: { children: React.ReactNode 
               </div>
               <span className="font-semibold text-gray-900 text-sm group-hover:text-[#e85d04] transition-colors">Shirley Agent</span>
             </Link>
-            <nav className="flex items-center gap-1">
+            {/* Desktop nav — hidden on mobile */}
+            <nav className="hidden sm:flex items-center gap-1">
               {NAV_ITEMS.map((item) => {
                 const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
                 return (
@@ -135,10 +136,35 @@ export default function ShirleyLayout({ children }: { children: React.ReactNode 
         </div>
       </header>
 
-      {/* Main content */}
-      <main className="flex-1 flex flex-col">
+      {/* Main content — extra bottom padding on mobile for tab bar */}
+      <main className="flex-1 flex flex-col pb-16 sm:pb-0">
         {children}
       </main>
+
+      {/* Mobile bottom tab bar — visible only on mobile */}
+      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-20 bg-white border-t border-gray-200 flex items-stretch">
+        {NAV_ITEMS.map((item) => {
+          const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors ${
+                item.primary
+                  ? 'text-[#e85d04]'
+                  : isActive
+                  ? 'text-[#e85d04]'
+                  : 'text-gray-400'
+              }`}
+            >
+              <span className={`w-6 h-6 flex items-center justify-center rounded-lg ${item.primary ? 'bg-[#e85d04] text-white' : ''}`}>
+                {item.icon}
+              </span>
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
 
       {/* Escalation slide-over */}
       {panelOpen && (
