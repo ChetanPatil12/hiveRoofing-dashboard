@@ -134,6 +134,11 @@ export interface ActivationTrade {
     phone: string;
     language: 'en' | 'es';
   };
+  // Only for "Roofing - Replacement" trades
+  supplier?: {
+    name: string;
+    phone: string;
+  };
 }
 
 export interface ActivationPayload {

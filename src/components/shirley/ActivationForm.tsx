@@ -13,6 +13,7 @@ interface TradeRow {
   appointmentType: AppointmentType;
   subId?: string;
   subcontractor: { name: string; phone: string; language: Language };
+  supplier?: { name: string; phone: string };
   subError?: string;
 }
 
@@ -221,7 +222,11 @@ export default function ActivationForm({ subsKey = 0 }: { subsKey?: number }) {
         acculynxJobId: selectedAccuLynxId,
         propertyAddress: address.trim(),
         homeowner: { name: homeownerName.trim(), phone: homeownerPhone.trim(), language: homeownerLanguage },
-        trades: trades.map(({ id: _id, subError: _e, ...t }) => t),
+        trades: trades.map(({ id: _id, subError: _e, ...t }) => ({
+          ...t,
+          // Only include supplier if both fields are filled
+          supplier: t.supplier?.name?.trim() && t.supplier?.phone?.trim() ? t.supplier : undefined,
+        })),
         jobNotes: jobNotes.trim() || undefined,
       };
 
@@ -442,6 +447,44 @@ export default function ActivationForm({ subsKey = 0 }: { subsKey?: number }) {
                   <p className="text-xs text-red-600 mt-1.5">{trade.subError}</p>
                 )}
               </div>
+
+              {/* Supplier — only for Roofing - Replacement */}
+              {trade.tradeType === 'Roofing - Replacement' && (
+                <div className="border-t border-gray-100 pt-3 space-y-2">
+                  <label className="text-[10px] text-gray-400 block">Material Supplier</label>
+                  <p className="text-[11px] text-gray-400">
+                    Shirley will contact the supplier first for a delivery date, then schedule the sub for the day after.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-gray-400 block mb-1">Supplier name</label>
+                      <input
+                        value={trade.supplier?.name ?? ''}
+                        onChange={(e) =>
+                          updateTrade(trade.id, {
+                            supplier: { name: e.target.value, phone: trade.supplier?.phone ?? '' },
+                          })
+                        }
+                        placeholder="e.g. ABC Roofing Supply"
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-400 block mb-1">Supplier phone</label>
+                      <input
+                        value={trade.supplier?.phone ?? ''}
+                        onChange={(e) =>
+                          updateTrade(trade.id, {
+                            supplier: { name: trade.supplier?.name ?? '', phone: e.target.value },
+                          })
+                        }
+                        placeholder="+1…"
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
