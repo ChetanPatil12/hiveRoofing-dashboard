@@ -13,8 +13,17 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Review Dashboard | Hive Roofing & Solar",
-  description: "Internal review request tracking dashboard",
+  title: "Hive Roofing & Solar",
+  description: "Shirley Agent Dashboard",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Hive",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export default function RootLayout({
@@ -27,6 +36,12 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <meta name="theme-color" content="#e85d04" />
+        <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+        <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
