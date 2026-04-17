@@ -3,16 +3,19 @@ import { google } from 'googleapis';
 const SHEET_ID = '1SbXGNNpSAKSX_92kus4QEr7q86m-xYSFVz2KxGXp-8w';
 const TAB_NAME = 'review_tracker';
 
-// Must match the automation's SHEET_COLUMNS exactly — this is the source of truth,
-// not the sheet header row (which is missing step6_confirmed and step6_confirmed_date).
+// Must match the actual Google Sheet column order exactly.
+// Existing sheet ends at last_updated (AB). New columns appended after.
 const SHEET_COLUMNS = [
+  // Existing columns A–AB (match the sheet header row exactly)
   'customer_id', 'job_id', 'customer_name', 'customer_email', 'customer_phone',
   'customer_address', 'review_link_base', 'current_step', 'status', 'last_milestone',
   'job_closed_date', 'last_request_date', 'last_request_step', 'initial_rating',
   'initial_feedback', 'step1_confirmed', 'step1_confirmed_date', 'step2_confirmed',
   'step2_confirmed_date', 'step3_confirmed', 'step3_confirmed_date', 'step4_confirmed',
-  'step4_confirmed_date', 'step5_confirmed', 'step5_confirmed_date', 'step6_confirmed',
-  'step6_confirmed_date', 'notes', 'created_date', 'last_updated', 'post_close_reminder_count',
+  'step4_confirmed_date', 'step5_confirmed', 'step5_confirmed_date',
+  'notes', 'created_date', 'last_updated',
+  // New columns — add these headers to the sheet after last_updated (AC onward)
+  'step6_confirmed', 'step6_confirmed_date', 'post_close_reminder_count',
   'step1_nps', 'step2_nps', 'step3_nps', 'step4_nps', 'step5_nps', 'step6_nps',
 ] as const;
 

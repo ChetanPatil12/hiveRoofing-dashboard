@@ -70,6 +70,14 @@ export const STATUS_STYLE: Record<CustomerStatus, string> = {
   opted_out: 'bg-yellow-100 text-yellow-700 border-yellow-200',
 };
 
+export function calcAvgNps(customer: Customer): string {
+  const scores = [1, 2, 3, 4, 5, 6]
+    .map((n) => parseInt(customer[`step${n}_nps` as keyof Customer] as string, 10))
+    .filter((n) => !isNaN(n) && n > 0);
+  if (scores.length === 0) return '';
+  return (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
+}
+
 export function countStepsConfirmed(customer: Customer): number {
   let count = 0;
   for (let i = 1; i <= 6; i++) {

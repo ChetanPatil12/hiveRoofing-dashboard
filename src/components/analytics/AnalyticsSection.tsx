@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useRef, useEffect } from 'react';
 import type { Customer } from '@/types/customer';
-import { STEP_PLATFORMS, STATUS_LABEL } from '@/types/customer';
+import { STEP_PLATFORMS, STATUS_LABEL, calcAvgNps } from '@/types/customer';
 import StatusDonutChart from './StatusDonutChart';
 import StepFunnelChart from './StepFunnelChart';
 import ReviewsByPlatformChart from './ReviewsByPlatformChart';
@@ -139,18 +139,28 @@ export default function AnalyticsSection({ customers }: Props) {
     [customers]
   );
 
-  const ratingData = useMemo(
-    () =>
-      ['1', '2', '3', '4', '5'].map((r) => ({
-        rating: `${r}★`,
-        count: customers.filter((c) => c.initial_rating === r).length,
-        color: r <= '2' ? '#ef4444' : r === '3' ? '#f59e0b' : '#22c55e',
-      })),
-    [customers]
-  );
+  const npsData = useMemo(() => {
+    const promoters = customers.filter((c) => {
+      const avg = calcAvgNps(c);
+      return avg !== '' && parseFloat(avg) >= 9;
+    }).length;
+    const passives = customers.filter((c) => {
+      const avg = calcAvgNps(c);
+      return avg !== '' && parseFloat(avg) >= 7 && parseFloat(avg) < 9;
+    }).length;
+    const detractors = customers.filter((c) => {
+      const avg = calcAvgNps(c);
+      return avg !== '' && parseFloat(avg) < 7;
+    }).length;
+    return [
+      { rating: 'Promoters\n(9–10)', count: promoters, color: '#22c55e' },
+      { rating: 'Passives\n(7–8)', count: passives, color: '#f59e0b' },
+      { rating: 'Detractors\n(1–6)', count: detractors, color: '#ef4444' },
+    ];
+  }, [customers]);
 
-  const noRatingCount = useMemo(
-    () => customers.filter((c) => !c.initial_rating).length,
+  const noNpsCount = useMemo(
+    () => customers.filter((c) => calcAvgNps(c) === '').length,
     [customers]
   );
 
@@ -172,7 +182,7 @@ export default function AnalyticsSection({ customers }: Props) {
     });
   }, [customers]);
 
-  const hasRatings = ratingData.some((d) => d.count > 0);
+  const hasNpsData = npsData.some((d) => d.count > 0);
   const hasCreatedDates = customers.some((c) => c.created_date);
   const totalPlatformReviews = platformData.reduce((sum, d) => sum + d.reviews, 0);
 
@@ -212,12 +222,12 @@ export default function AnalyticsSection({ customers }: Props) {
         </ChartCard>
 
         <ChartCard
-          title="Initial Rating Distribution"
-          info="How customers rated Hive on the landing page before being directed to a review platform. Red = 1–2 stars (no further requests sent), Amber = 3 stars, Green = 4–5 stars. Customers who haven't rated yet are shown as a footnote."
-          isEmpty={!hasRatings}
-          emptyMessage="No ratings collected yet"
+          title="NPS Category Breakdown"
+          info="Customers grouped by their average NPS score across all steps. Promoters (avg 9–10, green) are likely to recommend Hive. Passives (7–8, amber) are satisfied but not enthusiastic. Detractors (1–6, red) had a poor experience and stopped the sequence."
+          isEmpty={!hasNpsData}
+          emptyMessage="No NPS data collected yet"
         >
-          <RatingDistributionChart data={ratingData} noRatingCount={noRatingCount} />
+          <RatingDistributionChart data={npsData} noRatingCount={noNpsCount} />
         </ChartCard>
       </div>
 

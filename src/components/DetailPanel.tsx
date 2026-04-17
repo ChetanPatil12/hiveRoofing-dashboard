@@ -45,23 +45,6 @@ function Section({
   );
 }
 
-function NpsScore({ score }: { score: string }) {
-  const n = parseInt(score, 10);
-  if (!n || isNaN(n)) return <span className="text-gray-400">—</span>;
-  const color =
-    n <= 6 ? 'bg-red-100 text-red-700 border-red-200'
-    : n <= 8 ? 'bg-amber-100 text-amber-700 border-amber-200'
-    : 'bg-green-100 text-green-700 border-green-200';
-  const label = n <= 6 ? 'Detractor' : n <= 8 ? 'Passive' : 'Promoter';
-  return (
-    <div className="flex items-center gap-2">
-      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-sm font-bold border ${color}`}>
-        {n}/10
-      </span>
-      <span className="text-xs text-gray-500">{label}</span>
-    </div>
-  );
-}
 
 export default function DetailPanel({ customer, onClose, onStepUpdate }: Props) {
   const [loadingStep, setLoadingStep] = useState<number | null>(null);
@@ -145,27 +128,17 @@ export default function DetailPanel({ customer, onClose, onStepUpdate }: Props) 
             <Field label="Job Closed" value={formatDate(customer.job_closed_date)} />
           </Section>
 
-          {/* Rating & Feedback */}
-          <Section title="Initial Response">
-            <div className="col-span-2">
-              <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                NPS Score (Step 1)
-              </dt>
-              <dd className="mt-1">
-                <NpsScore score={customer.step1_nps || customer.initial_rating} />
-              </dd>
+          {/* Negative feedback text (if captured) */}
+          {customer.initial_feedback && (
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
+                Customer Feedback
+              </h3>
+              <p className="text-sm text-gray-800 bg-gray-50 rounded-lg p-3 border border-gray-100 italic">
+                &ldquo;{customer.initial_feedback}&rdquo;
+              </p>
             </div>
-            {customer.initial_feedback && (
-              <div className="col-span-2">
-                <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Feedback
-                </dt>
-                <dd className="mt-1 text-sm text-gray-800 bg-gray-50 rounded-lg p-3 border border-gray-100 italic">
-                  &ldquo;{customer.initial_feedback}&rdquo;
-                </dd>
-              </div>
-            )}
-          </Section>
+          )}
 
           {/* Review Steps */}
           <div className="border-t border-gray-100 pt-4">
