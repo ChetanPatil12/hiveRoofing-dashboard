@@ -45,24 +45,20 @@ function Section({
   );
 }
 
-function StarRating({ rating }: { rating: string }) {
-  const n = parseInt(rating, 10);
+function NpsScore({ score }: { score: string }) {
+  const n = parseInt(score, 10);
   if (!n || isNaN(n)) return <span className="text-gray-400">—</span>;
   const color =
-    n <= 2 ? 'text-red-500' : n === 3 ? 'text-yellow-500' : 'text-yellow-400';
+    n <= 6 ? 'bg-red-100 text-red-700 border-red-200'
+    : n <= 8 ? 'bg-amber-100 text-amber-700 border-amber-200'
+    : 'bg-green-100 text-green-700 border-green-200';
+  const label = n <= 6 ? 'Detractor' : n <= 8 ? 'Passive' : 'Promoter';
   return (
-    <div className="flex items-center gap-1">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <svg
-          key={i}
-          className={`w-4 h-4 ${i <= n ? color : 'text-gray-200'}`}
-          fill="currentColor"
-          viewBox="0 0 20 20"
-        >
-          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-        </svg>
-      ))}
-      <span className="text-sm font-semibold text-gray-700 ml-1">{n}/5</span>
+    <div className="flex items-center gap-2">
+      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-sm font-bold border ${color}`}>
+        {n}/10
+      </span>
+      <span className="text-xs text-gray-500">{label}</span>
     </div>
   );
 }
@@ -153,10 +149,10 @@ export default function DetailPanel({ customer, onClose, onStepUpdate }: Props) 
           <Section title="Initial Response">
             <div className="col-span-2">
               <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                Star Rating
+                NPS Score (Step 1)
               </dt>
               <dd className="mt-1">
-                <StarRating rating={customer.initial_rating} />
+                <NpsScore score={customer.step1_nps || customer.initial_rating} />
               </dd>
             </div>
             {customer.initial_feedback && (
@@ -188,6 +184,7 @@ export default function DetailPanel({ customer, onClose, onStepUpdate }: Props) 
                 const date = customer[
                   `step${s}_confirmed_date` as keyof Customer
                 ] as string;
+                const nps = customer[`step${s}_nps` as keyof Customer] as string;
                 const isCurrent = customer.current_step === s;
                 const isLoading = loadingStep === s;
                 return (
@@ -230,6 +227,11 @@ export default function DetailPanel({ customer, onClose, onStepUpdate }: Props) 
                       {isCurrent && !confirmed && (
                         <div className="text-xs text-[#e85d04] mt-0.5 font-medium">
                           Current step
+                        </div>
+                      )}
+                      {nps && (
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          NPS: <span className="font-semibold text-gray-700">{nps}/10</span>
                         </div>
                       )}
                     </div>

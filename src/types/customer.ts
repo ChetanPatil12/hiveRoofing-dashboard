@@ -37,6 +37,12 @@ export interface Customer {
   created_date: string;
   last_updated: string;
   post_close_reminder_count: string;
+  step1_nps: string;
+  step2_nps: string;
+  step3_nps: string;
+  step4_nps: string;
+  step5_nps: string;
+  step6_nps: string;
 }
 
 export const STEP_PLATFORMS: Record<number, string> = {

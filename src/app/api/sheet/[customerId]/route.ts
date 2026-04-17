@@ -13,6 +13,7 @@ const SHEET_COLUMNS = [
   'step2_confirmed_date', 'step3_confirmed', 'step3_confirmed_date', 'step4_confirmed',
   'step4_confirmed_date', 'step5_confirmed', 'step5_confirmed_date', 'step6_confirmed',
   'step6_confirmed_date', 'notes', 'created_date', 'last_updated', 'post_close_reminder_count',
+  'step1_nps', 'step2_nps', 'step3_nps', 'step4_nps', 'step5_nps', 'step6_nps',
 ] as const;
 
 function getSheetsClient() {
