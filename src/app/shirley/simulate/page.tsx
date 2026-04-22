@@ -1,15 +1,23 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
-type ContactRole = 'homeowner' | 'subcontractor' | 'supplier';
-type ConversationTurn = { role: 'user' | 'assistant'; content: string };
+type SenderRole = 'homeowner' | 'subcontractor' | 'supplier';
+type Stage = 'awaiting_supplier' | 'awaiting_sub' | 'awaiting_homeowner' | 'confirmed';
+
+interface SimState {
+  stage: Stage;
+  proposedDate?: string;
+  proposedTime?: string;
+  deliveryDate?: string;
+  suggestedSubDate?: string;
+  round?: number;
+}
 
 interface AiResult {
   intent: string;
   confidence: string;
   needsHuman: boolean;
-  suggestedReply: string;
   extractedData: {
     proposedDate: string | null;
     proposedTime: string | null;
@@ -19,10 +27,25 @@ interface AiResult {
   language: string;
 }
 
-interface Message {
-  from: 'you' | 'shirley';
+interface PanelMessage {
+  from: 'user' | 'shirley';
   text: string;
   ai?: AiResult;
+  reason?: string;
+  isCrossParty?: boolean;
+}
+
+interface CrossPartyMessage {
+  to: SenderRole;
+  message: string;
+  reason: string;
+}
+
+interface SimResponse {
+  reply: string;
+  aiResult: AiResult;
+  newState: SimState;
+  crossPartyMessages: CrossPartyMessage[];
 }
 
 interface Job {
@@ -31,308 +54,531 @@ interface Job {
   homeowner_name: string;
 }
 
-const inputCls = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#e85d04]';
-const selectCls = 'w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#e85d04]';
+const STAGE_LABELS: Record<Stage, string> = {
+  awaiting_supplier: 'Awaiting Supplier',
+  awaiting_sub: 'Awaiting Sub',
+  awaiting_homeowner: 'Awaiting Homeowner',
+  confirmed: 'Confirmed',
+};
 
-export default function SimulatePage() {
-  // Context setup
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [selectedJobId, setSelectedJobId] = useState('');
-  const [contactRole, setContactRole] = useState<ContactRole>('subcontractor');
-  // Manual context fields (used when no job selected)
-  const [manualAddress, setManualAddress] = useState('');
-  const [manualTrade, setManualTrade] = useState('Roofing - Replacement');
-  const [manualSubName, setManualSubName] = useState('Mike');
-  const [manualNotes, setManualNotes] = useState('');
-  const [schedulingGoal, setSchedulingGoal] = useState('');
+const STAGE_COLORS: Record<Stage, string> = {
+  awaiting_supplier: 'bg-slate-100 text-slate-700 border-slate-300',
+  awaiting_sub: 'bg-blue-100 text-blue-700 border-blue-300',
+  awaiting_homeowner: 'bg-orange-100 text-[#e85d04] border-orange-300',
+  confirmed: 'bg-green-100 text-green-700 border-green-300',
+};
 
-  // Conversation
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+function fmtDate(iso?: string | null): string {
+  if (!iso) return '';
+  try {
+    return new Date(iso + 'T12:00:00Z').toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', timeZone: 'UTC',
+    });
+  } catch { return iso; }
+}
+
+// ── Chat Panel ───────────────────────────────────────────────────────────────
+
+interface PanelProps {
+  role: SenderRole;
+  label: string;
+  accentBg: string;
+  accentText: string;
+  userBubble: string;
+  messages: PanelMessage[];
+  input: string;
+  setInput: (v: string) => void;
+  onSend: () => void;
+  loading: boolean;
+  isDisabled: boolean;
+  expandedIdx: number | null;
+  setExpandedIdx: (i: number | null) => void;
+  isActive: boolean;
+  onHeaderTap: () => void;
+  isMobile: boolean;
+  hasNew: boolean;
+}
+
+function ChatPanel({
+  role, label, accentBg, accentText, userBubble,
+  messages, input, setInput, onSend, loading, isDisabled,
+  expandedIdx, setExpandedIdx, isActive, onHeaderTap, isMobile, hasNew,
+}: PanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch('/api/shirley/jobs')
-      .then(r => r.json())
-      .then(d => setJobs((d.jobs ?? []).slice(0, 50)))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages.length]);
 
-  async function sendMessage() {
-    const text = input.trim();
-    if (!text || loading) return;
+  const handleKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); }
+  };
 
-    const newMsg: Message = { from: 'you', text };
-    setMessages(prev => [...prev, newMsg]);
-    setInput('');
-    setLoading(true);
-
-    // Build conversation history (exclude the message just typed)
-    const history: ConversationTurn[] = messages.map(m => ({
-      role: m.from === 'you' ? 'user' : 'assistant',
-      content: m.text,
-    }));
-
-    try {
-      const body: Record<string, unknown> = {
-        contactRole,
-        conversationHistory: history,
-        newMessage: text,
-        schedulingGoal: schedulingGoal || undefined,
-      };
-
-      if (selectedJobId) {
-        body.jobId = selectedJobId;
-      } else {
-        body.propertyAddress = manualAddress || '123 Test Street, Austin TX';
-        body.tradeType = manualTrade;
-        body.subName = manualSubName;
-        body.jobNotes = manualNotes || undefined;
-      }
-
-      const res = await fetch('/api/shirley/simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json() as AiResult & { error?: string };
-      if (!res.ok || data.error) throw new Error(data.error ?? `Error ${res.status}`);
-
-      setMessages(prev => [...prev, {
-        from: 'shirley',
-        text: data.suggestedReply,
-        ai: data,
-      }]);
-    } catch (err) {
-      setMessages(prev => [...prev, {
-        from: 'shirley',
-        text: `[Error: ${err instanceof Error ? err.message : 'Unknown error'}]`,
-      }]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function copyPromptContext() {
-    const selectedJob = jobs.find(j => j.job_id === selectedJobId);
-    const ctx = selectedJobId
-      ? `Job: ${selectedJob?.property_address ?? selectedJobId}`
-      : `Property: ${manualAddress}\nTrade: ${manualTrade}\nSub: ${manualSubName}\nNotes: ${manualNotes}`;
-    navigator.clipboard.writeText(`Role: ${contactRole}\n${ctx}\n\nConversation:\n${messages.map(m => `${m.from === 'you' ? 'You' : 'Shirley'}: ${m.text}`).join('\n')}`);
-  }
+  const collapsed = isMobile && !isActive;
 
   return (
-    <div className="flex h-[calc(100vh-57px)]">
-
-      {/* ── Left panel: context setup ──────────────────────────────────────── */}
-      <div className="w-80 flex-shrink-0 border-r border-gray-200 bg-white overflow-y-auto p-4 space-y-4">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-800 mb-1">Simulation Sandbox</h2>
-          <p className="text-[11px] text-gray-400">No SMS sent. No DB writes. Pure AI testing.</p>
+    <div className={`flex flex-col border border-gray-200 rounded-xl overflow-hidden bg-white ${isMobile ? 'w-full' : 'flex-1 min-w-0'}`}>
+      {/* Panel header */}
+      <button
+        onClick={onHeaderTap}
+        className={`flex items-center justify-between px-4 py-3 text-white ${accentBg} ${isMobile ? 'cursor-pointer' : 'cursor-default'}`}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold">{label}</span>
+          {isDisabled && !collapsed && (
+            <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full">waiting</span>
+          )}
+          {hasNew && collapsed && (
+            <span className="w-2 h-2 rounded-full bg-purple-300 animate-pulse" />
+          )}
         </div>
-
-        {/* Role selector */}
-        <div>
-          <label className="text-[10px] text-gray-400 block mb-1">You are texting as</label>
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden">
-            {(['subcontractor', 'homeowner', 'supplier'] as ContactRole[]).map(r => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setContactRole(r)}
-                className={`flex-1 text-xs py-1.5 capitalize transition-colors ${contactRole === r ? 'bg-[#e85d04] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-              >
-                {r === 'subcontractor' ? 'Sub' : r === 'homeowner' ? 'Owner' : 'Supplier'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Job picker */}
-        <div>
-          <label className="text-[10px] text-gray-400 block mb-1">Load a real job (optional)</label>
-          <select value={selectedJobId} onChange={e => setSelectedJobId(e.target.value)} className={selectCls}>
-            <option value="">— use manual context below —</option>
-            {jobs.map(j => (
-              <option key={j.job_id} value={j.job_id}>
-                {j.homeowner_name} · {j.property_address.slice(0, 30)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Manual context — shown when no job selected */}
-        {!selectedJobId && (
-          <div className="space-y-2 border-t border-gray-100 pt-3">
-            <label className="text-[10px] text-gray-400 block">Manual context</label>
-            <div>
-              <label className="text-[10px] text-gray-400 block mb-1">Property address</label>
-              <input value={manualAddress} onChange={e => setManualAddress(e.target.value)} placeholder="123 Main St, Austin TX" className={inputCls} />
-            </div>
-            <div>
-              <label className="text-[10px] text-gray-400 block mb-1">Trade type</label>
-              <input value={manualTrade} onChange={e => setManualTrade(e.target.value)} placeholder="Roofing - Replacement" className={inputCls} />
-            </div>
-            <div>
-              <label className="text-[10px] text-gray-400 block mb-1">Sub name</label>
-              <input value={manualSubName} onChange={e => setManualSubName(e.target.value)} placeholder="Mike" className={inputCls} />
-            </div>
-            <div>
-              <label className="text-[10px] text-gray-400 block mb-1">Job notes / measurements</label>
-              <textarea
-                value={manualNotes}
-                onChange={e => setManualNotes(e.target.value)}
-                placeholder="e.g. Total Roof Area: 1,632 sq ft | 16.32 squares | Full replacement"
-                rows={4}
-                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-y focus:outline-none focus:ring-2 focus:ring-[#e85d04]"
-              />
-            </div>
+        {isMobile && (
+          <div className="flex items-center gap-2">
+            {messages.length > 0 && (
+              <span className="text-[10px] bg-white/25 px-1.5 py-0.5 rounded-full">{messages.length}</span>
+            )}
+            <svg className={`w-4 h-4 transition-transform ${isActive ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
           </div>
         )}
+      </button>
 
-        {/* Scheduling goal override */}
-        <div>
-          <label className="text-[10px] text-gray-400 block mb-1">Override scheduling goal (optional)</label>
-          <input
-            value={schedulingGoal}
-            onChange={e => setSchedulingGoal(e.target.value)}
-            placeholder="e.g. Get sub to confirm Monday"
-            className={inputCls}
-          />
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-2 border-t border-gray-100 pt-3">
-          <button
-            type="button"
-            onClick={() => { setMessages([]); setExpandedIdx(null); }}
-            className="flex-1 text-xs py-1.5 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
-          >
-            Clear chat
-          </button>
-          <button
-            type="button"
-            onClick={copyPromptContext}
-            className="flex-1 text-xs py-1.5 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
-          >
-            Copy context
-          </button>
-        </div>
-      </div>
-
-      {/* ── Right panel: conversation ──────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0">
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
-          {messages.length === 0 && (
-            <div className="flex items-center justify-center h-full text-center">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Start typing to test Shirley</p>
-                <p className="text-xs text-gray-400 mt-1">No messages will be sent to real contacts</p>
-                <div className="mt-4 space-y-1 text-xs text-gray-400 text-left">
-                  <p>Try: "Repair or replacement? How many squares?"</p>
-                  <p>Try: "Yeah Monday 9am works"</p>
-                  <p>Try: "How much does this pay?"</p>
-                  <p>Try: "I'm done working with you guys"</p>
-                </div>
+      {!collapsed && (
+        <>
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-[240px] max-h-[420px]">
+            {messages.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-xs text-gray-400 py-8">
+                {isDisabled ? `Waiting for stage...` : `Type a message as the ${label.toLowerCase()}`}
               </div>
-            </div>
-          )}
-
-          {messages.map((msg, idx) => (
-            <div key={idx} className={`flex ${msg.from === 'you' ? 'justify-end' : 'justify-start'}`}>
-              <div className="max-w-[70%] space-y-1">
-                {/* Bubble */}
-                <div className={`rounded-2xl px-4 py-2.5 text-sm ${
-                  msg.from === 'you'
-                    ? 'bg-[#e85d04] text-white rounded-br-sm'
-                    : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm shadow-sm'
+            ) : messages.map((msg, i) => (
+              <div key={i} className={`flex flex-col ${msg.from === 'user' ? 'items-end' : 'items-start'}`}>
+                {msg.isCrossParty && (
+                  <span className="text-[9px] text-purple-500 font-medium mb-0.5 px-1">Shirley → auto</span>
+                )}
+                <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-sm leading-relaxed border ${
+                  msg.from === 'user'
+                    ? `${userBubble} rounded-br-sm`
+                    : msg.isCrossParty
+                    ? 'bg-purple-50 border-purple-200 text-gray-800 rounded-bl-sm'
+                    : 'bg-white border-gray-200 text-gray-800 rounded-bl-sm'
                 }`}>
                   {msg.text}
                 </div>
 
-                {/* AI reasoning panel — Shirley messages only */}
+                {/* AI reasoning accordion — only for direct Shirley messages */}
                 {msg.from === 'shirley' && msg.ai && (
-                  <div className="ml-1">
+                  <div className="mt-1 max-w-[85%] w-full">
                     <button
-                      type="button"
-                      onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
+                      onClick={() => setExpandedIdx(expandedIdx === i ? null : i)}
                       className="text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-1"
                     >
-                      <span>{expandedIdx === idx ? '▾' : '▸'}</span>
-                      {msg.ai.intent} · {msg.ai.confidence} confidence
-                      {msg.ai.needsHuman && <span className="ml-1 text-red-500 font-semibold">· needs human</span>}
+                      <svg className={`w-3 h-3 transition-transform ${expandedIdx === i ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                      {msg.ai.intent} · {msg.ai.confidence} confidence{msg.ai.needsHuman ? ' · 🚨 needs human' : ''}
                     </button>
-
-                    {expandedIdx === idx && (
-                      <div className="mt-1 bg-gray-50 border border-gray-200 rounded-lg p-3 text-[11px] text-gray-600 space-y-1 font-mono">
-                        <div><span className="text-gray-400">intent:</span> {msg.ai.intent}</div>
-                        <div><span className="text-gray-400">confidence:</span> {msg.ai.confidence}</div>
-                        <div><span className="text-gray-400">needsHuman:</span> {String(msg.ai.needsHuman)}</div>
-                        <div><span className="text-gray-400">language:</span> {msg.ai.language}</div>
-                        {msg.ai.extractedData.proposedDate && (
-                          <div><span className="text-gray-400">proposedDate:</span> {msg.ai.extractedData.proposedDate}</div>
-                        )}
-                        {msg.ai.extractedData.proposedTime && (
-                          <div><span className="text-gray-400">proposedTime:</span> {msg.ai.extractedData.proposedTime}</div>
-                        )}
-                        {msg.ai.extractedData.yesNo !== null && (
-                          <div><span className="text-gray-400">yesNo:</span> {String(msg.ai.extractedData.yesNo)}</div>
-                        )}
-                        {msg.ai.extractedData.conditions && (
-                          <div><span className="text-gray-400">conditions:</span> {msg.ai.extractedData.conditions}</div>
-                        )}
+                    {expandedIdx === i && (
+                      <div className="mt-1 text-[11px] bg-gray-50 border border-gray-100 rounded-lg p-2.5 space-y-1 text-gray-600">
+                        <div><span className="font-medium text-gray-800">Intent:</span> {msg.ai.intent}</div>
+                        <div><span className="font-medium text-gray-800">Confidence:</span> {msg.ai.confidence}</div>
+                        <div><span className="font-medium text-gray-800">Needs human:</span> {String(msg.ai.needsHuman)}</div>
+                        <div><span className="font-medium text-gray-800">Language:</span> {msg.ai.language}</div>
+                        {msg.ai.extractedData && Object.entries(msg.ai.extractedData).map(([k, v]) => v != null && (
+                          <div key={k}><span className="font-medium text-gray-800">{k}:</span> {String(v)}</div>
+                        ))}
                       </div>
                     )}
                   </div>
                 )}
+                {/* Reason badge for cross-party messages */}
+                {msg.from === 'shirley' && msg.isCrossParty && msg.reason && (
+                  <p className="text-[9px] text-purple-400 mt-0.5 px-1 max-w-[85%]">{msg.reason}</p>
+                )}
               </div>
-            </div>
-          ))}
-
-          {loading && (
-            <div className="flex justify-start">
-              <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-sm">
-                <div className="flex gap-1 items-center">
-                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            ))}
+            {loading && (
+              <div className="flex items-start">
+                <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-sm px-3 py-2">
+                  <div className="flex gap-1">
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+            <div ref={bottomRef} />
+          </div>
 
-          <div ref={bottomRef} />
-        </div>
-
-        {/* Input bar */}
-        <div className="border-t border-gray-200 bg-white px-4 py-3">
-          <div className="flex gap-2 max-w-3xl mx-auto">
+          {/* Input */}
+          <div className={`border-t border-gray-100 p-2 flex gap-2 ${isDisabled ? 'opacity-50 pointer-events-none' : ''}`}>
             <input
+              type="text"
               value={input}
               onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-              placeholder={`Type as ${contactRole}…`}
-              disabled={loading}
-              className="flex-1 text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#e85d04] disabled:opacity-50"
+              onKeyDown={handleKey}
+              disabled={isDisabled || loading}
+              placeholder={isDisabled ? `Waiting for stage…` : `Type as ${label.toLowerCase()}…`}
+              className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#e85d04] disabled:bg-gray-50"
             />
             <button
-              type="button"
-              onClick={sendMessage}
-              disabled={loading || !input.trim()}
-              className="px-5 py-2.5 bg-[#e85d04] hover:bg-[#d05203] disabled:opacity-40 text-white text-sm font-medium rounded-xl transition-colors"
+              onClick={onSend}
+              disabled={isDisabled || loading || !input.trim()}
+              className={`px-3 py-1.5 rounded-lg text-white text-sm font-medium transition-colors disabled:opacity-40 ${accentBg} hover:opacity-90`}
             >
               Send
             </button>
           </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Main Page ────────────────────────────────────────────────────────────────
+
+export default function SimulatePage() {
+  // Job context
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState('');
+  const [manualAddress, setManualAddress] = useState('123 Test St, San Diego CA');
+  const [manualHomeowner, setManualHomeowner] = useState('Alex');
+  const [manualSubName, setManualSubName] = useState('Mike');
+  const [manualTrade, setManualTrade] = useState('Roofing - Replacement');
+  const [manualAccess, setManualAccess] = useState('exterior');
+  const [manualNotes, setManualNotes] = useState('');
+
+  // Shared state machine
+  const [simState, setSimState] = useState<SimState>({ stage: 'awaiting_supplier', round: 1 });
+
+  // Per-panel messages
+  const [supplierMsgs, setSupplierMsgs] = useState<PanelMessage[]>([]);
+  const [subMsgs, setSubMsgs] = useState<PanelMessage[]>([]);
+  const [homeownerMsgs, setHomeownerMsgs] = useState<PanelMessage[]>([]);
+
+  // Per-panel inputs
+  const [supplierInput, setSupplierInput] = useState('');
+  const [subInput, setSubInput] = useState('');
+  const [homeownerInput, setHomeownerInput] = useState('');
+
+  // Per-panel loading
+  const [supplierLoading, setSupplierLoading] = useState(false);
+  const [subLoading, setSubLoading] = useState(false);
+  const [homeownerLoading, setHomeownerLoading] = useState(false);
+
+  // Per-panel AI accordion
+  const [supplierExpanded, setSupplierExpanded] = useState<number | null>(null);
+  const [subExpanded, setSubExpanded] = useState<number | null>(null);
+  const [homeownerExpanded, setHomeownerExpanded] = useState<number | null>(null);
+
+  // Mobile
+  const [activeMobilePanel, setActiveMobilePanel] = useState<SenderRole>('supplier');
+  const [isMobile, setIsMobile] = useState(false);
+
+  // New-message indicator for collapsed panels
+  const [supplierHasNew, setSupplierHasNew] = useState(false);
+  const [subHasNew, setSubHasNew] = useState(false);
+  const [homeownerHasNew, setHomeownerHasNew] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/shirley/jobs').then(r => r.json()).then(d => {
+      if (Array.isArray(d)) setJobs(d);
+    }).catch(() => {});
+  }, []);
+
+  // Derive disabled state per panel
+  const supplierDisabled = simState.stage !== 'awaiting_supplier';
+  const subDisabled = simState.stage !== 'awaiting_sub';
+  const homeownerDisabled = simState.stage !== 'awaiting_homeowner';
+
+  const jobContext = selectedJobId
+    ? { jobId: selectedJobId }
+    : {
+        propertyAddress: manualAddress,
+        homeownerName: manualHomeowner,
+        subName: manualSubName,
+        tradeType: manualTrade,
+        accessType: manualAccess,
+        jobNotes: manualNotes || undefined,
+      };
+
+  const appendToPanel = useCallback((role: SenderRole, msg: PanelMessage) => {
+    if (role === 'supplier') {
+      setSupplierMsgs(prev => [...prev, msg]);
+      if (isMobile && activeMobilePanel !== 'supplier') setSupplierHasNew(true);
+    } else if (role === 'subcontractor') {
+      setSubMsgs(prev => [...prev, msg]);
+      if (isMobile && activeMobilePanel !== 'subcontractor') setSubHasNew(true);
+    } else {
+      setHomeownerMsgs(prev => [...prev, msg]);
+      if (isMobile && activeMobilePanel !== 'homeowner') setHomeownerHasNew(true);
+    }
+  }, [isMobile, activeMobilePanel]);
+
+  const sendMessage = useCallback(async (role: SenderRole) => {
+    const inputMap: Record<SenderRole, string> = {
+      supplier: supplierInput,
+      subcontractor: subInput,
+      homeowner: homeownerInput,
+    };
+    const msgsMap: Record<SenderRole, PanelMessage[]> = {
+      supplier: supplierMsgs,
+      subcontractor: subMsgs,
+      homeowner: homeownerMsgs,
+    };
+    const setLoadingMap: Record<SenderRole, (v: boolean) => void> = {
+      supplier: setSupplierLoading,
+      subcontractor: setSubLoading,
+      homeowner: setHomeownerLoading,
+    };
+    const clearInputMap: Record<SenderRole, () => void> = {
+      supplier: () => setSupplierInput(''),
+      subcontractor: () => setSubInput(''),
+      homeowner: () => setHomeownerInput(''),
+    };
+
+    const text = inputMap[role].trim();
+    const isLoading = role === 'supplier' ? supplierLoading : role === 'subcontractor' ? subLoading : homeownerLoading;
+    if (!text || isLoading) return;
+
+    const existingMsgs = msgsMap[role];
+
+    // Optimistic user message
+    appendToPanel(role, { from: 'user', text });
+    clearInputMap[role]();
+    setLoadingMap[role](true);
+
+    // Build conversation history from this panel's messages
+    const conversationHistory = existingMsgs.map(m => ({
+      role: (m.from === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+      content: m.text,
+    }));
+
+    try {
+      const res = await fetch('/api/shirley/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...jobContext,
+          senderRole: role,
+          currentState: simState,
+          conversationHistory,
+          newMessage: text,
+        }),
+      });
+
+      const data: SimResponse = await res.json();
+
+      // Shirley's direct reply to sender
+      appendToPanel(role, { from: 'shirley', text: data.reply, ai: data.aiResult });
+
+      // Advance shared state
+      setSimState(data.newState);
+
+      // Cross-party messages with delay
+      data.crossPartyMessages.forEach((cp, idx) => {
+        setTimeout(() => {
+          appendToPanel(cp.to, {
+            from: 'shirley',
+            text: cp.message,
+            reason: cp.reason,
+            isCrossParty: true,
+          });
+        }, 800 * (idx + 1));
+      });
+    } catch {
+      appendToPanel(role, { from: 'shirley', text: "Something went wrong — try again.", isCrossParty: false });
+    } finally {
+      setLoadingMap[role](false);
+    }
+  }, [
+    supplierInput, subInput, homeownerInput,
+    supplierMsgs, subMsgs, homeownerMsgs,
+    supplierLoading, subLoading, homeownerLoading,
+    simState, jobContext, appendToPanel,
+  ]);
+
+  const handleReset = () => {
+    setSimState({ stage: 'awaiting_supplier', round: 1 });
+    setSupplierMsgs([]); setSubMsgs([]); setHomeownerMsgs([]);
+    setSupplierInput(''); setSubInput(''); setHomeownerInput('');
+    setSupplierHasNew(false); setSubHasNew(false); setHomeownerHasNew(false);
+    setSupplierExpanded(null); setSubExpanded(null); setHomeownerExpanded(null);
+  };
+
+  const handleMobilePanelTap = (role: SenderRole) => {
+    setActiveMobilePanel(role);
+    if (role === 'supplier') setSupplierHasNew(false);
+    else if (role === 'subcontractor') setSubHasNew(false);
+    else setHomeownerHasNew(false);
+  };
+
+  const panels = [
+    {
+      role: 'supplier' as SenderRole,
+      label: 'Supplier',
+      accentBg: 'bg-slate-600',
+      accentText: 'text-slate-700',
+      userBubble: 'bg-slate-100 text-slate-800 border-slate-200',
+      messages: supplierMsgs,
+      input: supplierInput,
+      setInput: setSupplierInput,
+      onSend: () => sendMessage('supplier'),
+      loading: supplierLoading,
+      isDisabled: supplierDisabled,
+      expandedIdx: supplierExpanded,
+      setExpandedIdx: setSupplierExpanded,
+      hasNew: supplierHasNew,
+    },
+    {
+      role: 'subcontractor' as SenderRole,
+      label: 'Sub',
+      accentBg: 'bg-blue-600',
+      accentText: 'text-blue-700',
+      userBubble: 'bg-blue-50 text-blue-800 border-blue-200',
+      messages: subMsgs,
+      input: subInput,
+      setInput: setSubInput,
+      onSend: () => sendMessage('subcontractor'),
+      loading: subLoading,
+      isDisabled: subDisabled,
+      expandedIdx: subExpanded,
+      setExpandedIdx: setSubExpanded,
+      hasNew: subHasNew,
+    },
+    {
+      role: 'homeowner' as SenderRole,
+      label: 'Homeowner',
+      accentBg: 'bg-[#e85d04]',
+      accentText: 'text-[#e85d04]',
+      userBubble: 'bg-orange-50 text-orange-800 border-orange-200',
+      messages: homeownerMsgs,
+      input: homeownerInput,
+      setInput: setHomeownerInput,
+      onSend: () => sendMessage('homeowner'),
+      loading: homeownerLoading,
+      isDisabled: homeownerDisabled,
+      expandedIdx: homeownerExpanded,
+      setExpandedIdx: setHomeownerExpanded,
+      hasNew: homeownerHasNew,
+    },
+  ];
+
+  return (
+    <div className="flex h-full min-h-0">
+      {/* Left sidebar */}
+      <aside className="w-60 flex-shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col overflow-y-auto">
+        <div className="p-4 border-b border-gray-200">
+          <h2 className="text-sm font-semibold text-gray-900">Simulation Sandbox</h2>
+          <p className="text-xs text-gray-500 mt-0.5">No SMS sent · No DB writes</p>
+        </div>
+
+        <div className="p-4 space-y-3 flex-1">
+          {/* Job picker */}
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1">Load real job</label>
+            <select
+              value={selectedJobId}
+              onChange={e => setSelectedJobId(e.target.value)}
+              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#e85d04]"
+            >
+              <option value="">Manual context ↓</option>
+              {jobs.map(j => (
+                <option key={j.job_id} value={j.job_id}>{j.property_address}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Manual context — only shown when no job selected */}
+          {!selectedJobId && (
+            <div className="space-y-2">
+              <div>
+                <label className="text-xs text-gray-500 block mb-0.5">Address</label>
+                <input value={manualAddress} onChange={e => setManualAddress(e.target.value)}
+                  className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#e85d04]" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-0.5">Homeowner name</label>
+                <input value={manualHomeowner} onChange={e => setManualHomeowner(e.target.value)}
+                  className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#e85d04]" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-0.5">Sub name</label>
+                <input value={manualSubName} onChange={e => setManualSubName(e.target.value)}
+                  className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#e85d04]" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-0.5">Trade type</label>
+                <input value={manualTrade} onChange={e => setManualTrade(e.target.value)}
+                  className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#e85d04]" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-0.5">Access type</label>
+                <select value={manualAccess} onChange={e => setManualAccess(e.target.value)}
+                  className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#e85d04]">
+                  <option value="exterior">Exterior</option>
+                  <option value="interior">Interior</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-0.5">Job notes</label>
+                <textarea value={manualNotes} onChange={e => setManualNotes(e.target.value)} rows={3}
+                  placeholder="EagleView notes, scope, measurements…"
+                  className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-[#e85d04]" />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Reset button */}
+        <div className="p-4 border-t border-gray-200">
+          <button
+            onClick={handleReset}
+            className="w-full text-xs text-gray-500 border border-gray-200 rounded-lg px-3 py-2 hover:bg-white hover:text-gray-700 transition-colors"
+          >
+            Reset Simulation
+          </button>
+        </div>
+      </aside>
+
+      {/* Main area */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Stage bar */}
+        <div className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-200 bg-white flex-shrink-0 flex-wrap">
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${STAGE_COLORS[simState.stage]}`}>
+            {STAGE_LABELS[simState.stage]}
+          </span>
+          {simState.deliveryDate && (
+            <span className="text-xs text-gray-500">Delivery: <span className="font-medium text-gray-700">{fmtDate(simState.deliveryDate)}</span></span>
+          )}
+          {simState.proposedDate && (
+            <span className="text-xs text-gray-500">Proposed: <span className="font-medium text-gray-700">{fmtDate(simState.proposedDate)}{simState.proposedTime ? ` @ ${simState.proposedTime}` : ''}</span></span>
+          )}
+          {(simState.round ?? 1) > 1 && (
+            <span className="text-xs text-gray-400">Round {simState.round}</span>
+          )}
+        </div>
+
+        {/* Panels */}
+        <div className={`flex-1 min-h-0 p-4 overflow-y-auto ${isMobile ? 'flex flex-col gap-3' : 'flex flex-row gap-4 items-stretch'}`}>
+          {panels.map(p => (
+            <ChatPanel
+              key={p.role}
+              {...p}
+              isActive={!isMobile || activeMobilePanel === p.role}
+              onHeaderTap={() => isMobile ? handleMobilePanelTap(p.role) : undefined}
+              isMobile={isMobile}
+            />
+          ))}
         </div>
       </div>
     </div>
