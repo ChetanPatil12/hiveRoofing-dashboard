@@ -361,6 +361,23 @@ export default function ActivationForm({ subsKey = 0 }: { subsKey?: number }) {
                 )}
               </div>
 
+              {/* Trade type */}
+              <div>
+                <label className="text-[10px] text-gray-400 block mb-1">Trade type</label>
+                <input
+                  list={`trade-types-${trade.id}`}
+                  value={trade.tradeType}
+                  onChange={(e) => updateTrade(trade.id, { tradeType: e.target.value })}
+                  placeholder="e.g. Roofing - Replacement"
+                  className={inputCls}
+                />
+                <datalist id={`trade-types-${trade.id}`}>
+                  {['Roofing - Replacement', 'Roofing - Repair', 'Gutters', 'Windows', 'Siding', 'Solar', 'Exterior Paint', 'Interior Paint', 'Insulation', 'Flooring', 'HVAC'].map((t) => (
+                    <option key={t} value={t} />
+                  ))}
+                </datalist>
+              </div>
+
               {/* Access type + Appointment type */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
