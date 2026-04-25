@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import type { Job, Trade, Appointment, Message } from '@/types/shirley';
+import type { Job, Trade, Appointment, Message, ConversationNotes } from '@/types/shirley';
 import ConversationThread from './ConversationThread';
 import MessageComposer from './MessageComposer';
 
@@ -34,7 +34,7 @@ function AppointmentStatus({ appt }: { appt: Appointment | undefined }) {
       {time && (
         <span className="text-xs text-gray-500">
           {new Date(time).toLocaleString('en-US', {
-            timeZone: 'America/Denver',
+            timeZone: 'America/Chicago',
             month: 'short',
             day: 'numeric',
             hour: 'numeric',
@@ -42,6 +42,57 @@ function AppointmentStatus({ appt }: { appt: Appointment | undefined }) {
             hour12: true,
           })}
         </span>
+      )}
+    </div>
+  );
+}
+
+function ConversationNotesPanel({ notes }: { notes: ConversationNotes | null }) {
+  const [open, setOpen] = useState(true);
+  const contacts = notes?.thirdPartyContacts ?? [];
+  const facts = notes?.keyFacts ?? [];
+  if (contacts.length === 0 && facts.length === 0) return null;
+
+  return (
+    <div className="mx-3 mt-2 mb-1 rounded-lg border border-amber-200 bg-amber-50 text-xs">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 text-amber-800 font-medium"
+      >
+        <span>Notes & Contacts</span>
+        <svg className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 space-y-2">
+          {contacts.length > 0 && (
+            <div>
+              <p className="text-amber-600 font-medium mb-1">Third-party contacts</p>
+              {contacts.map((c, i) => (
+                <div key={i} className="flex flex-wrap gap-x-3 gap-y-0.5 text-gray-700 leading-5">
+                  {c.relation && <span className="capitalize text-amber-700">{c.relation}</span>}
+                  {c.name && <span className="font-medium">{c.name}</span>}
+                  {c.phone && <span>{c.phone}</span>}
+                  {c.email && <span>{c.email}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+          {facts.length > 0 && (
+            <div>
+              <p className="text-amber-600 font-medium mb-1">Key notes</p>
+              <ul className="space-y-0.5 text-gray-700">
+                {facts.map((f, i) => (
+                  <li key={i} className="flex gap-1.5">
+                    <span className="text-amber-400 flex-shrink-0">•</span>
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -212,6 +263,9 @@ export default function JobDetail({ jobId, onClose }: Props) {
           </div>
         )}
       </div>
+
+      {/* Notes & third-party contacts — homeowner tab only */}
+      {isHomeownerTab && <ConversationNotesPanel notes={job.conversation_notes ?? null} />}
 
       {/* Conversation — scoped to active tab's phone */}
       <ConversationThread

@@ -76,6 +76,20 @@ export interface Message {
   created_at: string;
 }
 
+export interface ThirdPartyContact {
+  name?: string;
+  phone?: string;
+  email?: string;
+  relation?: string;
+  addedAt: string;
+}
+
+export interface ConversationNotes {
+  thirdPartyContacts?: ThirdPartyContact[];
+  keyFacts?: string[];
+  lastUpdated?: string;
+}
+
 export interface Job {
   job_id: string;
   property_address: string;
@@ -85,6 +99,7 @@ export interface Job {
   current_status: string;
   acculynx_job_id: string | null;
   job_notes: string | null;
+  conversation_notes: ConversationNotes | null;
   created_at: string;
   updated_at: string;
   // joined / computed
