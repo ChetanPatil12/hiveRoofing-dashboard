@@ -20,7 +20,7 @@ function formatRelative(isoString: string): string {
 
 function formatFull(isoString: string): string {
   return new Date(isoString).toLocaleString('en-US', {
-    timeZone: 'America/Denver',
+    timeZone: 'America/Chicago',
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -75,7 +75,12 @@ export default function ConversationThread({ jobId, phone, optimisticMessages = 
     return () => clearInterval(interval);
   }, [fetchMessages]);
 
-  const allMessages = [...messages, ...optimisticMessages];
+  const pendingOptimistic = optimisticMessages.filter(
+    (opt) => !messages.some(
+      (m) => m.message_body === opt.message_body && m.direction === opt.direction && m.sender_type === opt.sender_type
+    )
+  );
+  const allMessages = [...messages, ...pendingOptimistic];
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
